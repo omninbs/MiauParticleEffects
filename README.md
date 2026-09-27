@@ -1,12 +1,10 @@
 <div align="center">
-
-<!-- LOGO — replace the URL below with your own hosted logo. Recommended sizes:
-     180×180 px (square) shown in the header, or 1280×640 px (16:9) for the repo social preview. -->
 <img src="https://raw.githubusercontent.com/omninbs/MiauParticleEffects/main/docs/logo.png" alt="MiauParticleEffects" width="1280"/>
 
-# MiauParticleEffects
+# MiauParticleEffects - 猫猫粒子特效
 
-### 一只喵，把红石音乐泼洒成漫天流光。Bind note blocks to particle effects — a visual feast alongside your redstone music.
+### 一只喵喵，把红石音乐泼洒成漫天流光。
+### Bind note blocks to particle effects — a visual feast alongside your redstone music.
 
 [![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](#)
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-55B91E.svg)](#)

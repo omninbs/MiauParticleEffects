@@ -66,11 +66,16 @@ public class ColoredEndRodParticle extends AnimatedParticle {
 
     public static void spawnStatic(ClientWorld world, double x, double y, double z,
                                    int colorArgb, float scale, int maxAge) {
+        spawnStatic(world, x, y, z, colorArgb, scale, maxAge, false);
+    }
+
+    public static void spawnStatic(ClientWorld world, double x, double y, double z,
+                                   int colorArgb, float scale, int maxAge, boolean force) {
         pendingMode = MODE_SOLID;
         pendingColor = colorArgb & 0xFFFFFF;
         pendingMaxAge = Math.max(1, maxAge);
         pendingScale = Math.max(0.05f, Math.min(1.5f, scale));
-        world.addParticleClient(MiauParticleEffectsParticles.COLORED_END_ROD, x, y, z, 0, 0, 0);
+        addParticle(world, MiauParticleEffectsParticles.COLORED_END_ROD, x, y, z, 0, 0, 0, force);
     }
 
     public static void spawnMoving(ClientWorld world, double x, double y, double z,
@@ -80,22 +85,34 @@ public class ColoredEndRodParticle extends AnimatedParticle {
 
     public static void spawnMoving(ClientWorld world, double x, double y, double z,
                                    double vx, double vy, double vz, int colorArgb, float scale, int maxAge) {
+        spawnMoving(world, x, y, z, vx, vy, vz, colorArgb, scale, maxAge, false);
+    }
+
+    public static void spawnMoving(ClientWorld world, double x, double y, double z,
+                                   double vx, double vy, double vz, int colorArgb, float scale, int maxAge,
+                                   boolean force) {
         pendingMode = MODE_SOLID;
         pendingColor = colorArgb & 0xFFFFFF;
         pendingMaxAge = Math.max(1, maxAge);
         pendingScale = Math.max(0.05f, Math.min(1.5f, scale));
-        world.addParticleClient(MiauParticleEffectsParticles.COLORED_END_ROD, x, y, z, vx, vy, vz);
+        addParticle(world, MiauParticleEffectsParticles.COLORED_END_ROD, x, y, z, vx, vy, vz, force);
     }
 
     /**
      * 圆球头粒子（spell 圆形光球精灵）：用于弹力球的“彗星头”，可与拖尾。glitter 星形粒子区分。     */
     public static void spawnHead(ClientWorld world, double x, double y, double z,
                                  double vx, double vy, double vz, int colorArgb, float scale, int maxAge) {
+        spawnHead(world, x, y, z, vx, vy, vz, colorArgb, scale, maxAge, false);
+    }
+
+    public static void spawnHead(ClientWorld world, double x, double y, double z,
+                                 double vx, double vy, double vz, int colorArgb, float scale, int maxAge,
+                                 boolean force) {
         pendingMode = MODE_SOLID;
         pendingColor = colorArgb & 0xFFFFFF;
         pendingMaxAge = Math.max(1, maxAge);
         pendingScale = Math.max(0.05f, Math.min(4f, scale));
-        world.addParticleClient(MiauParticleEffectsParticles.COLORED_HEAD, x, y, z, vx, vy, vz);
+        addParticle(world, MiauParticleEffectsParticles.COLORED_HEAD, x, y, z, vx, vy, vz, force);
     }
 
     /**
@@ -103,13 +120,30 @@ public class ColoredEndRodParticle extends AnimatedParticle {
     public static void spawnRainbow(ClientWorld world, double x, double y, double z,
                                     double vx, double vy, double vz, float scale, int maxAge,
                                     float hueOffset, boolean headSprite) {
+        spawnRainbow(world, x, y, z, vx, vy, vz, scale, maxAge, hueOffset, headSprite, false);
+    }
+
+    public static void spawnRainbow(ClientWorld world, double x, double y, double z,
+                                    double vx, double vy, double vz, float scale, int maxAge,
+                                    float hueOffset, boolean headSprite, boolean force) {
         pendingMode = MODE_RAINBOW;
         pendingColor = 0xFFFFFF;
         pendingMaxAge = Math.max(1, maxAge);
         pendingScale = Math.max(0.05f, Math.min(headSprite ? 4f : 1.5f, scale));
         pendingHueOffset = hueOffset;
-        world.addParticleClient(headSprite ? MiauParticleEffectsParticles.COLORED_HEAD : MiauParticleEffectsParticles.COLORED_END_ROD,
-                x, y, z, vx, vy, vz);
+        addParticle(world,
+                headSprite ? MiauParticleEffectsParticles.COLORED_HEAD : MiauParticleEffectsParticles.COLORED_END_ROD,
+                x, y, z, vx, vy, vz, force);
+    }
+
+    private static void addParticle(ClientWorld world, SimpleParticleType type,
+                                    double x, double y, double z,
+                                    double vx, double vy, double vz, boolean force) {
+        if (force) {
+            world.addImportantParticleClient(type, x, y, z, vx, vy, vz);
+        } else {
+            world.addParticleClient(type, x, y, z, vx, vy, vz);
+        }
     }
 
     public static ParticleFactory<SimpleParticleType> createFactory(SpriteProvider spriteProvider) {

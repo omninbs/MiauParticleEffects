@@ -115,11 +115,11 @@ public final class TextInstance extends DisplayInstance {
             Vec3d worldPos = baseOffset.add(local);
             if (colorMode == ColorMode.RAINBOW_COLOR) {
                 ColoredEndRodParticle.spawnRainbow(world, worldPos.x, worldPos.y, worldPos.z,
-                        delta.x, delta.y, delta.z, sizeFactor, 2, hueOffset, false);
+                        delta.x, delta.y, delta.z, sizeFactor, 2, hueOffset, false, params.force());
             } else {
                 int colorRgb = resolvePixelColor(px, colorMode, worldTime);
                 ColoredEndRodParticle.spawnMoving(world, worldPos.x, worldPos.y, worldPos.z,
-                        delta.x, delta.y, delta.z, colorRgb, sizeFactor, 2);
+                        delta.x, delta.y, delta.z, colorRgb, sizeFactor, 2, params.force());
             }
         }
     }

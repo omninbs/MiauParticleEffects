@@ -1,12 +1,10 @@
 <div align="center">
-
-<!-- LOGO——请把下面的 URL 替换为你自己的托管 logo。
-     推荐尺寸：头部展示用 180×180 正方形；仓库社交预览图用 1280×640（16:9）。 -->
 <img src="https://raw.githubusercontent.com/omninbs/MiauParticleEffects/main/docs/logo.png" alt="MiauParticleEffects" width="1280"/>
 
 # MiauParticleEffects
 
-### 一只喵，把红石音乐泼洒成漫天流光。将音符盒与粒子特效绑定，实现视觉盛宴 + 红石音乐的双重体验。
+### 一只喵喵，把红石音乐泼洒成漫天流光。
+### 将音符盒与粒子特效绑定，实现视觉盛宴 + 红石音乐的双重体验。
 
 [![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](#)
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-55B91E.svg)](#)

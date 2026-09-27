@@ -152,14 +152,16 @@ public final class NoteBlockSimulation {
                 return;
             }
             int maxAge = Math.max(4, Math.min(256, trailCount));
-            ColoredEndRodParticle.spawnMoving(world, pos.x, pos.y, pos.z, 0, 0, 0, 0xFFF2E0, maxAge);
+            ColoredEndRodParticle.spawnMoving(world, pos.x, pos.y, pos.z, 0, 0, 0, 0xFFF2E0, maxAge,
+                    params.force());
             // 球头：圆球（spell 精灵）形状，尺寸大于拖尾星点，带本 tick 位移作为速度。
             // 渲染时利用“上一位置→当前位置”插值让球头平滑滑动。
             double vx = pos.x - lastPos.x;
             double vy = pos.y - lastPos.y;
             double vz = pos.z - lastPos.z;
             if (vx * vx + vy * vy + vz * vz > 1e-8) {
-                ColoredEndRodParticle.spawnHead(world, pos.x, pos.y, pos.z, vx, vy, vz, 0xFFF2E0, 2.0f, 2);
+                ColoredEndRodParticle.spawnHead(world, pos.x, pos.y, pos.z, vx, vy, vz, 0xFFF2E0, 2.0f, 2,
+                        params.force());
             }
         }
 

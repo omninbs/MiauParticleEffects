@@ -193,13 +193,15 @@ public final class EffectInstance extends DisplayInstance {
     private void spawnParticle(ClientWorld world, double x, double y, double z,
                                double vx, double vy, double vz, float gradientT, float scale, int maxAge) {
         if (isRainbowColor()) {
-            ColoredEndRodParticle.spawnRainbow(world, x, y, z, vx, vy, vz, scale, maxAge, hueOffset, false);
+            ColoredEndRodParticle.spawnRainbow(world, x, y, z, vx, vy, vz, scale, maxAge, hueOffset, false,
+                    params.force());
         } else {
             int color = resolveColor(world, gradientT);
             if (vx * vx + vy * vy + vz * vz > 1e-8) {
-                ColoredEndRodParticle.spawnMoving(world, x, y, z, vx, vy, vz, color, maxAge);
+                ColoredEndRodParticle.spawnMoving(world, x, y, z, vx, vy, vz, color, scale, maxAge,
+                        params.force());
             } else {
-                ColoredEndRodParticle.spawnStatic(world, x, y, z, color, scale, maxAge);
+                ColoredEndRodParticle.spawnStatic(world, x, y, z, color, scale, maxAge, params.force());
             }
         }
     }
