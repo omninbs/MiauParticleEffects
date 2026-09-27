@@ -286,7 +286,7 @@ public final class MiauParticleEffectsCommand {
     }
 
     private static TextDisplayParams parseText(String text, Vec3d pos, Options o) {
-        o.checkKeys("scale", "color", "gradient", "towards", "duration", "enter", "exit", "delay",
+        o.checkKeys("scale", "color", "gradient", "force", "towards", "duration", "enter", "exit", "delay",
                 "curve", "in", "out", "fade", "spread", "move", "id");
         float scale = (float) o.optDouble("scale", ConfigManager.get().defaultScale, 0.05, 64);
         ColorSpec cs = resolveColorSpec(o);
@@ -302,11 +302,12 @@ public final class MiauParticleEffectsCommand {
         float spread = (float) o.optDouble("spread", 3.0, 1.0, 100);
         MoveSpec move = o.has("move") ? parseMove(o.optString("move", "")) : null;
         String id = o.optString("id", "");
+        boolean force = o.optBool("force", false);
         return new TextDisplayParams(
                 text, pos, scale, cs.color(), cs.mode(), cs.gradientColors(), orientation,
                 duration, enter, exit, delay, curve,
                 entry, exitSet, fade, spread, ConfigManager.get().density, move,
-                id.isBlank() ? null : id);
+                id.isBlank() ? null : id, force);
     }
 
     // ------------------------------------------------------------------ effect
@@ -349,7 +350,7 @@ public final class MiauParticleEffectsCommand {
     }
 
     private static EffectDisplayParams parseEffect(EffectType type, Vec3d pos, Options o) {
-        o.checkKeys("size", "speed", "color", "gradient", "towards", "rotate", "duration", "enter", "exit", "delay",
+        o.checkKeys("size", "speed", "color", "gradient", "force", "towards", "rotate", "duration", "enter", "exit", "delay",
                 "curve", "in", "out", "fade", "move", "id");
         double defaultSize = switch (type) {
             case CUBE, TETRA -> 2.0;
@@ -382,11 +383,12 @@ public final class MiauParticleEffectsCommand {
         FadeOption fade = requireFade(o.optString("fade", "none"));
         MoveSpec move = o.has("move") ? parseMove(o.optString("move", "")) : null;
         String id = o.optString("id", "");
+        boolean force = o.optBool("force", false);
         return new EffectDisplayParams(
                 type, pos, size, waveSpeed, cs.color(), cs.mode(), cs.gradientColors(), orientation, rotation,
                 duration, enter, exit, delay, curve,
                 entry, exitSet, fade, move,
-                id.isBlank() ? null : id);
+                id.isBlank() ? null : id, force);
     }
 
     private static ColorSpec resolveColorSpec(Options o) {
@@ -451,7 +453,8 @@ public final class MiauParticleEffectsCommand {
                 NoteBlockParams.DEFAULT_TRAIL,
                 NoteBlockParams.DEFAULT_CURVE,
                 NoteBlockParams.DEFAULT_BALLS,
-                NoteBlockParams.DEFAULT_HEIGHT);
+                NoteBlockParams.DEFAULT_HEIGHT,
+                false);
         NoteBlockParams params;
         try {
             params = parseNoteBlock(center, options, base);
@@ -505,13 +508,14 @@ public final class MiauParticleEffectsCommand {
     }
 
     private static NoteBlockParams parseNoteBlock(Vec3d center, Options o, NoteBlockParams base) {
-        o.checkKeys("selector", "radius", "trail", "curve", "count", "height");
+        o.checkKeys("selector", "radius", "trail", "curve", "count", "height", "force");
         float radius = (float) o.optDouble("radius", base.radius(), 1, 256);
         int trail = o.optInt("trail", base.trailCount(), 2, 256);
         HorizontalCurve curve = o.optEnum("curve", HorizontalCurve::parse, base.curve());
         int balls = o.optInt("count", base.ballCount(), 1, 8);
         float height = (float) o.optDouble("height", base.maxJumpHeight(), 0.5, 64);
-        return new NoteBlockParams(center, radius, trail, curve, balls, height);
+        boolean force = o.has("force") ? o.optBool("force", base.force()) : base.force();
+        return new NoteBlockParams(center, radius, trail, curve, balls, height, force);
     }
 
     private static Entity resolveCenterEntity(ServerCommandSource src, String selector) throws CommandSyntaxException {
