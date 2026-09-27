@@ -145,15 +145,16 @@ public final class MiauParticleEffectsPackets {
                 String curveName = buf.readString(32);
                 int balls = buf.readVarInt();
                 float height = buf.readFloat();
+                boolean force = buf.readBoolean();
                 HorizontalCurve curve = curveName.isEmpty() ? HorizontalCurve.ARC : parseCurve(curveName);
                 try {
                     return new NoteBlockStartPayload(new NoteBlockParams(
-                            new Vec3d(x, y, z), radius, trail, curve, balls, height));
+                            new Vec3d(x, y, z), radius, trail, curve, balls, height, force));
                 } catch (RuntimeException e) {
                     return new NoteBlockStartPayload(new NoteBlockParams(
                             new Vec3d(x, y, z), NoteBlockParams.DEFAULT_RADIUS,
                             NoteBlockParams.DEFAULT_TRAIL, NoteBlockParams.DEFAULT_CURVE,
-                            NoteBlockParams.DEFAULT_BALLS, NoteBlockParams.DEFAULT_HEIGHT));
+                            NoteBlockParams.DEFAULT_BALLS, NoteBlockParams.DEFAULT_HEIGHT, false));
                 }
             }
 
@@ -167,6 +168,7 @@ public final class MiauParticleEffectsPackets {
                 buf.writeString(value.options().curve().id());
                 buf.writeVarInt(value.options().ballCount());
                 buf.writeFloat(value.options().maxJumpHeight());
+                buf.writeBoolean(value.options().force());
             }
 
             private static HorizontalCurve parseCurve(String s) {

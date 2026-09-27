@@ -2,7 +2,7 @@
 
 <!-- LOGO——请把下面的 URL 替换为你自己的托管 logo。
      推荐尺寸：头部展示用 180×180 正方形；仓库社交预览图用 1280×640（16:9）。 -->
-<img src="https://raw.githubusercontent.com/<YOUR_USER>/<YOUR_REPO>/main/docs/logo.png" alt="MiauParticleEffects" width="180"/>
+<img src="https://raw.githubusercontent.com/omninbs/MiauParticleEffects/main/docs/logo.png" alt="MiauParticleEffects" width="180"/>
 
 # MiauParticleEffects
 

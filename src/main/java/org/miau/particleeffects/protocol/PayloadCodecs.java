@@ -132,7 +132,7 @@ public final class PayloadCodecs {
                         text, new net.minecraft.util.math.Vec3d(p.x, p.y, p.z), scale, color,
                         colorMode, gradientColors,
                         orientation, duration, enter, exit, delay,
-                        curve, entry, exitSet, fade, spread, density, move, id);
+                        curve, entry, exitSet, fade, spread, density, move, id, buf.readBoolean());
             } catch (RuntimeException e) {
                 return fallbackText(text, p);
             }
@@ -144,7 +144,7 @@ public final class PayloadCodecs {
                     ColorMode.SOLID, List.of(),
                     new Orientation(0f, 0f, 0f), 100, 0, 20, 0,
                     Easings.EASE_OUT, AnimationSet.EMPTY, AnimationSet.EMPTY,
-                    FadeOption.NONE, 3f, 0.1, null, null);
+                    FadeOption.NONE, 3f, 0.1, null, null, false);
         }
 
         @Override
@@ -179,6 +179,7 @@ public final class PayloadCodecs {
             if (value.id() != null) {
                 buf.writeString(value.id());
             }
+            buf.writeBoolean(value.force());
         }
     };
 
@@ -235,14 +236,14 @@ public final class PayloadCodecs {
                         type, new net.minecraft.util.math.Vec3d(p.x, p.y, p.z), size, waveSpeed, color,
                         colorMode, gradientColors,
                         orientation, rotation, duration, enter, exit, delay,
-                        curve, entry, exitSet, fade, move, id);
+                        curve, entry, exitSet, fade, move, id, buf.readBoolean());
             } catch (RuntimeException e) {
                 return new EffectDisplayParams(
                         EffectType.CUBE, p.asVec3d(), 2f, 0f, 0xFFFFFFFF,
                         ColorMode.SOLID, List.of(),
                         new Orientation(0f, 0f, 0f), null, 100, 0, 10, 0,
                         Easings.EASE_OUT, AnimationSet.EMPTY, AnimationSet.EMPTY,
-                        FadeOption.NONE, null, null);
+                        FadeOption.NONE, null, null, false);
             }
         }
 
@@ -284,6 +285,7 @@ public final class PayloadCodecs {
             if (value.id() != null) {
                 buf.writeString(value.id());
             }
+            buf.writeBoolean(value.force());
         }
     };
 

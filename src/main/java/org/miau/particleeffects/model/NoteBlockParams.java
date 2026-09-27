@@ -8,7 +8,8 @@ public record NoteBlockParams(
         int trailCount,
         HorizontalCurve curve,
         int ballCount,
-        float maxJumpHeight) {
+        float maxJumpHeight,
+        boolean force) {
 
     public static final float DEFAULT_RADIUS = 16f;
     public static final int DEFAULT_TRAIL = 24;

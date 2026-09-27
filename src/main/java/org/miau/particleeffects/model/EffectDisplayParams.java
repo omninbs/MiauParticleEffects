@@ -27,7 +27,8 @@ public record EffectDisplayParams(
         AnimationSet exit,
         FadeOption fade,
         MoveSpec move,
-        String id) {
+        String id,
+        boolean force) {
 
     public EffectDisplayParams {
         if (type == null) {
@@ -78,7 +79,7 @@ public record EffectDisplayParams(
         return new EffectDisplayParams(
                 type, pos, size, waveSpeed, colorArgb, colorMode, gradientColors, orientation, rotation,
                 durationTicks, enterTicks, exitTicks, delayTicks,
-                curve, entry, exit, fade, move, newId);
+                curve, entry, exit, fade, move, newId, force);
     }
 
     public EffectDisplayParams withDelay(int addedTicks) {
@@ -88,7 +89,7 @@ public record EffectDisplayParams(
         return new EffectDisplayParams(
                 type, pos, size, waveSpeed, colorArgb, colorMode, gradientColors, orientation, rotation,
                 durationTicks, enterTicks, exitTicks, delayTicks + addedTicks,
-                curve, entry, exit, fade, move, id);
+                curve, entry, exit, fade, move, id, force);
     }
 
     public int totalTicks() {

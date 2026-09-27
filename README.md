@@ -2,7 +2,7 @@
 
 <!-- LOGO — replace the URL below with your own hosted logo. Recommended sizes:
      180×180 px (square) shown in the header, or 1280×640 px (16:9) for the repo social preview. -->
-<img src="https://raw.githubusercontent.com/<YOUR_USER>/<YOUR_REPO>/main/docs/logo.png" alt="MiauParticleEffects" width="180"/>
+<img src="https://raw.githubusercontent.com/omninbs/MiauParticleEffects/main/docs/logo.png" alt="MiauParticleEffects" width="180"/>
 
 # MiauParticleEffects
 

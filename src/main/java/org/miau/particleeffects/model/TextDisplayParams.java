@@ -26,7 +26,8 @@ public record TextDisplayParams(
         float spread,
         double density,
         MoveSpec move,
-        String id) {
+        String id,
+        boolean force) {
 
     public TextDisplayParams {
         if (text == null || text.isBlank()) {
@@ -80,7 +81,7 @@ public record TextDisplayParams(
         return new TextDisplayParams(
                 text, pos, scale, colorArgb, colorMode, gradientColors, orientation,
                 durationTicks, enterTicks, exitTicks, delayTicks,
-                curve, entry, exit, fade, spread, density, move, newId);
+                curve, entry, exit, fade, spread, density, move, newId, force);
     }
 
     public TextDisplayParams withDelay(int addedTicks) {
@@ -90,7 +91,7 @@ public record TextDisplayParams(
         return new TextDisplayParams(
                 text, pos, scale, colorArgb, colorMode, gradientColors, orientation,
                 durationTicks, enterTicks, exitTicks, delayTicks + addedTicks,
-                curve, entry, exit, fade, spread, density, move, id);
+                curve, entry, exit, fade, spread, density, move, id, force);
     }
 
     public int totalTicks() {
