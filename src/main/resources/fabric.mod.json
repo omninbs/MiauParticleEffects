@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "miauparticleeffects",
+  "version": "${version}",
+  "name": "MiauParticleEffects",
+  "description": "针对红石音乐的粒子特效模组：粒子文字 + 粒子特效 + 音符盒弹力球联动，用视觉盛宴伴你聆听红石音乐。绑定音符盒，让每一次弹奏都化作流光。",
+  "authors": [
+    "Miau"
+  ],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-datagen": [
+      "org.miau.particleeffects.client.MiauParticleEffectsDataGenerator"
+    ],
+    "client": [
+      "org.miau.particleeffects.client.MiauParticleEffectsClient"
+    ],
+    "main": [
+      "org.miau.particleeffects.MiauParticleEffects"
+    ]
+  },
+  "mixins": [
+    "miauparticleeffects.mixins.json",
+    {
+      "config": "miauparticleeffects.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
