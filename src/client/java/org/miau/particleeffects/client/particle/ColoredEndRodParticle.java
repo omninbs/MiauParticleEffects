@@ -84,6 +84,12 @@ public class ColoredEndRodParticle extends AnimatedParticle {
     }
 
     public static void spawnMoving(ClientWorld world, double x, double y, double z,
+                                   double vx, double vy, double vz, int colorArgb, int maxAge,
+                                   boolean force) {
+        spawnMoving(world, x, y, z, vx, vy, vz, colorArgb, 1f, maxAge, force);
+    }
+
+    public static void spawnMoving(ClientWorld world, double x, double y, double z,
                                    double vx, double vy, double vz, int colorArgb, float scale, int maxAge) {
         spawnMoving(world, x, y, z, vx, vy, vz, colorArgb, scale, maxAge, false);
     }

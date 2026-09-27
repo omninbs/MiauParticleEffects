@@ -134,11 +134,11 @@ selector=@p radius=16 trail=24 curve=arc|sine|line count=1 height=3
 
 ## 🖼️ 截图
 
-<!-- 替换为你自己的游戏内截图（建议 1280×640 或 16:9）。 -->
-| | |
-|---|---|
-| *粒子歌词* | *爆炸特效* |
-| *水波* | *音符盒弹力球* |
+
+
+更多的可以看我的视频（截图的话就很难展现内容了，而且还麻烦，猫猫喜欢偷懒喵！）：
+<iframe src="//player.bilibili.com/player.html?isOutside=true&aid=117295993066587&bvid=BV12Ket6rEG9&cid=42020638515&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>
+
 
 ---
 
@@ -148,14 +148,16 @@ selector=@p radius=16 trail=24 curve=arc|sine|line count=1 height=3
 - [x] 正方体 / 四面体 / 爆炸 / 水波特效
 - [x] 音符盒弹力球联动
 - [x] 渐变色 / 彩虹色
-- [ ] 更多音符盒可视化（节拍条、均衡器）
-- [ ] 多语言与更多缓动预设
+- [ ] 与[NoteBlockWeb编辑器](https://github.com/omninbs/NoteBlockWeb)联动。
+- [ ] 多语言/更多特效
+- [ ] 全自动化生成/自动识别红石音乐并且生成特效
 
 ---
 
 ## 🤝 参与贡献
 
 欢迎提 [Issue](../../issues) 或 [PR](../../pulls)，一起完善这个模组！
+**ps：大约80%的代码是AI写的喵，手搓这么大个项目会累死喵喵我的，所以选择了用AI喵！**
 
 ---
 

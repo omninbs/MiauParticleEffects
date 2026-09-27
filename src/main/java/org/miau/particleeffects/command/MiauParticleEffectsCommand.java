@@ -86,6 +86,7 @@ public final class MiauParticleEffectsCommand {
               spread=     间距动画倍率        默认 3.0
               move=       dx,dy,dz,时长,曲线  显示期位移
               id=         自定义ID，供 clear id= 使用
+              force=      强制粒子显示，不受距离裁剪（可能增加客户端开销） 默认 false
             入场/出场动画（同类互斥，可跨类组合，逗号分隔）：
               slide:up|down|left|right     滑入/滑出
               scale:shrink|enlarge         缩小/放大
@@ -121,6 +122,7 @@ public final class MiauParticleEffectsCommand {
               fade=      淡入淡出 in / out / both / none   默认 none
               move=      dx,dy,dz,时长,曲线   显示期位移
               id=        自定义ID
+              force=     强制粒子显示，不受距离裁剪（可能增加客户端开销） 默认 false
             示例：
               /mpe effect cube 100 64 100 size=2 color=#00FFFF rotate=0,1,0,3
               /mpe effect explosion 100 64 100 size=6 color=#FF4500 fade=out
@@ -142,6 +144,7 @@ public final class MiauParticleEffectsCommand {
               curve=      水平运动曲线 line / arc / sine   默认 arc
               count=      弹力球数量       默认 1    范围 1~8
               height=     跳动最大高度(方块) 默认 3   范围 0.5~64
+              force=      强制粒子显示，不受距离裁剪（可能增加客户端开销）默认 false
             说明：竖直方向为固定抛物线（受 height 限制），
                   水平方向遵循 curve（直线/弧形/正弦摆动）。
                   多个音符盒同时激活时弹力球均匀分布，不重复跳同一目标；
@@ -454,7 +457,7 @@ public final class MiauParticleEffectsCommand {
                 NoteBlockParams.DEFAULT_CURVE,
                 NoteBlockParams.DEFAULT_BALLS,
                 NoteBlockParams.DEFAULT_HEIGHT,
-                false);
+                options.optBool("force", false));
         NoteBlockParams params;
         try {
             params = parseNoteBlock(center, options, base);
