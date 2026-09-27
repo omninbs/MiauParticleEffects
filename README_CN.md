@@ -134,10 +134,16 @@ selector=@p radius=16 trail=24 curve=arc|sine|line count=1 height=3
 
 ## 🖼️ 截图
 
-
+<table>
+  <tr>
+    <td><img src="docs/text1.png" alt="文字"/></td>
+    <td><img src="docs/text2.png" alt="文字"/></td>
+    <td><img src="docs/cube.png" alt="正方形"/></td>
+  </tr>
+</table>
 
 更多的可以看我的视频（截图的话就很难展现内容了，而且还麻烦，猫猫喜欢偷懒喵！）：
-<iframe src="//player.bilibili.com/player.html?isOutside=true&aid=117295993066587&bvid=BV12Ket6rEG9&cid=42020638515&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>
+More details can be seen in the [showcase video on Bilibili](https://www.bilibili.com/video/BV12Ket6rEG9/).
 
 
 ---

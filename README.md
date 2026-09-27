@@ -180,12 +180,14 @@ The mod creates `config/miauparticleeffects.json` on first launch:
 <table>
   <tr>
     <td><img src="docs/text1.png" alt="Particle text example"/></td>
-    <td><img src="docs/text2.png" alt="Animated particle text example"/></td>
+    <td><img src="docs/text2.png" alt="Particle text example"/></td>
     <td><img src="docs/cube.png" alt="Hollow cube particle effect"/></td>
   </tr>
 </table>
 
 More details can be seen in the [showcase video on Bilibili](https://www.bilibili.com/video/BV12Ket6rEG9/).
+
+截图的话就很难展现内容了，而且还麻烦，猫猫喜欢偷懒喵！
 
 ---
 
