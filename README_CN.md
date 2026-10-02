@@ -9,7 +9,7 @@
 [![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](#)
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-55B91E.svg)](#)
 [![Fabric](https://img.shields.io/badge/Fabric-API-dbd0b4.svg)](#)
-[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-blue.svg)](#)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 </div>
 
@@ -214,4 +214,4 @@ gradlew :1.21.8:build
 
 基于 [Fabric](https://fabricmc.net/) 与 Fabric API 构建。灵感来源于红石音乐的魅力。
 
-**许可证：** All Rights Reserved。当前闭源，如需授权请联系作者。
+**许可证：** [Apache License 2.0](LICENSE)。

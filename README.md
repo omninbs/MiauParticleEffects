@@ -10,7 +10,7 @@
 [![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](#requirements)
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-55B91E.svg)](#requirements)
 [![Fabric](https://img.shields.io/badge/Fabric-API-dbd0b4.svg)](#requirements)
-[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-blue.svg)](#license)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 </div>
 
@@ -269,7 +269,7 @@ Most of the implementation was developed with AI assistance, followed by manual 
 
 ## License
 
-All Rights Reserved. This project is currently closed-source. Contact the author before redistributing or reusing the code.
+Licensed under the [Apache License 2.0](LICENSE).
 
 ## Credits
 
