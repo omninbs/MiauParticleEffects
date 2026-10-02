@@ -33,10 +33,10 @@ Particle-written lyrics + a visualizer following your redstone melody creates a 
 
 | Item | Version |
 |---|---|
-| Minecraft | **1.21.11** |
+| Minecraft | **1.21.1 / 1.21.4 / 1.21.8 / 1.21.11 / 26.2** (multi-version, one codebase) |
 | Loader | Fabric Loader **>= 0.16.0** |
-| API | Fabric API for 1.21.11 |
-| Java | **21** |
+| API | Fabric API (latest for the matching Minecraft version) |
+| Java | **21** (1.21.x) / **25** (26.x) |
 
 > Install the mod on both client and server. A dedicated server needs the mod to detect note blocks and broadcast display events.
 
@@ -73,13 +73,23 @@ Particle-written lyrics + a visualizer following your redstone melody creates a 
 - **explosion** — cosmic particles radiating in every direction
 - **wave** — expanding water ripple with controllable speed
 
-### Note-Block Comet
+### Note-Block Comet (per-track)
+
+First **select your tracks in game**; each track owns exactly one comet:
 
 ```text
-/mpe noteblock on [options]
+/mpe noteblock select start [link=3]   # enter selection mode
+# left-click any block on each chained track (blocks are NOT actually broken)
+/mpe noteblock select done             # recognize tracks
+/mpe noteblock on [options]            # enable
 ```
 
-When a note block inside the detection radius is activated, a **bouncing comet with a fading trail** jumps to the top-center of that block. Multiple note blocks activated in the same tick are distributed across the available balls; a single target can be shared when there are more balls than targets.
+- **Track recognition**: starting from each clicked block, the mod floods note blocks on the **same Y level** within a horizontal distance of `link` (default 3). The seed may be a repeater, redstone dust, etc. — it snaps to the nearest note block within 3 blocks.
+- **No track bleeding**: limiting to the same Y level keeps vertically stacked tracks separate, so a track never absorbs another one.
+- **One ball per track**: every note block belongs to a track; when activated, it drives that track's single **bouncing comet with a fading trail** to the top-center of the block. Multiple notes on the same track in the same tick → one is chosen at random. Tracks never interfere, so a ball can neither get stuck nor jump onto another track.
+- **Limit**: up to **32 tracks** (= up to 32 balls).
+- **Rhythm sync**: the server learns the note order within each track and pre-sends the predicted next note block so comets keep up with the song.
+- Running `on` without any selected track reports that you must select tracks first.
 
 ### Four Color Modes
 
@@ -105,7 +115,8 @@ color=rainbow
 | `density <0.01~1>` | Set persistent pixel sampling density |
 | `text "<text>" <x> <y> <z> [options]` | Display text with particles |
 | `effect <type> <x> <y> <z> [options]` | Cast a particle effect |
-| `noteblock on\|off\|status\|set` | Enable and manage the note-block comet |
+| `noteblock select start\|done\|clear\|status` | Select note-block tracks (left-click; blocks are not actually broken) |
+| `noteblock on\|off\|status\|set` | Enable and manage the note-block comet (ball count = selected track count) |
 | `clear [all\|text\|effect\|id=<ID>]` | Clear displays |
 | `autoclear <on\|off>` | Let old text exit before new text starts |
 
@@ -139,7 +150,12 @@ gradient=#FF0000,#00FF00 gradient=rainbow color=rainbow force=true
 ### Note-Block Options
 
 ```text
-selector=@p radius=16 trail=24 curve=arc|sine|line count=1 height=3 force=true
+# Selecting tracks
+select start link=3        # max horizontal spacing between adjacent note blocks on a track (1~8)
+select done / select clear / select status
+
+# Enabling (ball count is derived from the selected track count, no count= needed)
+selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
 ```
 
 ---
@@ -152,7 +168,10 @@ selector=@p radius=16 trail=24 curve=arc|sine|line count=1 height=3 force=true
 /mpe effect cube 100 64 100 size=2 color=#00FFFF rotate=0,1,0,3
 /mpe effect explosion 100 64 100 size=6 gradient=#FF4500,#FFFFFF
 /mpe effect wave 100 64 100 size=5 speed=3 color=#00FF00
-/mpe noteblock on radius=32 trail=24 count=2 height=3
+/mpe noteblock select start link=3
+# after left-clicking every track:
+/mpe noteblock select done
+/mpe noteblock on radius=32 trail=24 height=3
 ```
 
 ---
@@ -209,6 +228,29 @@ More details can be seen in the [showcase video on Bilibili](https://www.bilibil
 - [ ] More languages and particle effects
 - [ ] Automatic redstone music detection and effect generation
 - [ ] More note-block visualizers such as beat bars and equalizers
+
+---
+
+## Multi-Version Support
+
+This project uses [Stonecutter](https://stonecutter.kikugie.dev/) to build **one codebase for multiple Minecraft versions**, with `loom-back-compat` selecting the correct Loom variant (obfuscated vs unobfuscated) automatically. Sources are written against Mojang official mappings.
+
+Supported versions: `1.21.1`, `1.21.4`, `1.21.8`, `1.21.11`, `26.2`.
+
+```text
+# Build every version (outputs in versions/<version>/build/libs/)
+gradlew build
+
+# Build a single version (switch the active version, then build)
+gradlew "Set active project to 1.21.8"
+gradlew :1.21.8:build
+```
+
+- Per-version dependency coordinates live in `stonecutter.properties.toml`.
+- Version differences are handled with Stonecutter conditional comments (`/*? if ... */`) and replacements in `stonecutter.gradle.kts`.
+- Switch back to 26.2 before committing: `gradlew "Set active project to 26.2"`.
+
+> **Build prerequisites:** the Gradle daemon must run on **Java 25** (Loom 1.18 requires it). This is handled automatically by `gradle/gradle-daemon-jvm.properties` — Gradle will pick (or download via foojay) a Java 25 JVM for the daemon, regardless of your `JAVA_HOME`. The Java 21 toolchain for the 1.21.x targets is auto-provisioned as well.
 
 ---
 

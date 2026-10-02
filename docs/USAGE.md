@@ -203,9 +203,23 @@ Examples:
 
 The wave uses velocity-based particle interpolation while expanding, so its ring is designed to move smoothly between Minecraft ticks instead of jumping between discrete radii.
 
-## Note-Block Comet
+## Note-Block Comet (per-track)
 
-Enable the feature explicitly:
+### 1. Select tracks first
+
+Each track owns exactly one comet, so you must select tracks before enabling the feature:
+
+```text
+/mpe noteblock select start [link=3]   # enter selection mode (link = max horizontal spacing between adjacent note blocks on a track, 1~8)
+# left-click any block on each chained track (blocks are NOT actually broken)
+/mpe noteblock select done             # finish selection and recognize tracks
+/mpe noteblock select clear            # clear clicked seeds (still in selection mode)
+/mpe noteblock select status           # show selection progress and recognized tracks
+```
+
+Recognition rule: starting from each clicked block, note blocks on the **same Y level** within a horizontal distance of `link` are flooded into one track. A seed may be a repeater, redstone dust, etc. — it snaps to the nearest note block within 3 blocks. Because tracks are limited to a single Y level, vertically stacked tracks never merge. Up to **32 tracks** can be selected.
+
+### 2. Enable
 
 ```text
 /mpe noteblock on [options]
@@ -213,6 +227,8 @@ Enable the feature explicitly:
 /mpe noteblock status
 /mpe noteblock set [options]
 ```
+
+Running `on` before selecting any track reports that tracks must be selected first.
 
 ### Note-Block Options
 
@@ -222,15 +238,19 @@ Enable the feature explicitly:
 | `radius=` | Horizontal detection radius in blocks. Range `1` to `256`. | `16` |
 | `trail=` | Maximum trail particle count. Range `2` to `256`. | `24` |
 | `curve=` | Horizontal path: `line`, `arc`, or `sine`. | `arc` |
-| `count=` | Number of bouncing balls. Range `1` to `8`. | `1` |
 | `height=` | Maximum vertical parabola height in blocks. Range `0.5` to `64`. | `3` |
+| `force=` | Bypass particle distance culling. | `false` |
+
+> The ball count is no longer set with `count=`: **ball count = selected track count** (up to 32).
 
 Examples:
 
 ```text
-/mpe noteblock on radius=32 trail=24 curve=arc count=2 height=3
-/mpe noteblock on selector=@p radius=24 curve=sine count=4
-/mpe noteblock set trail=12 count=3 height=2
+/mpe noteblock select start link=3
+# after left-clicking every track:
+/mpe noteblock select done
+/mpe noteblock on radius=32 trail=24 curve=arc height=3
+/mpe noteblock set trail=12 height=2
 /mpe noteblock status
 /mpe noteblock off
 ```
@@ -239,11 +259,11 @@ Examples:
 
 - The detection center is the executing player, or `@p` for a command block without `selector=`.
 - Targets are the activated note block's **top-surface center**: block position plus `(0.5, 1.0, 0.5)`.
+- One comet is bound to one track (`ballIndex == trackIndex`), so it only reacts to notes on its own track and can neither bleed into another track nor get stuck.
+- Multiple notes on the same track in the same tick → one is chosen at random.
 - Vertical movement is a parabola. `height=` is the configured maximum height of the parabola.
 - Horizontal movement is independent and follows `line`, `arc`, or `sine`.
-- Same-tick note blocks are batched before distribution.
-- If targets are at least as numerous as balls, each ball gets a unique target.
-- If there are fewer targets than balls, multiple balls may share targets.
+- The server learns the note order within each track and pre-sends the predicted next note block so comets keep up with the song.
 - The comet head is a larger round glowing orb; the trail uses smaller star-shaped glitter particles.
 - The trail length is controlled by `trail=`. Old trail particles fade out naturally before removal.
 

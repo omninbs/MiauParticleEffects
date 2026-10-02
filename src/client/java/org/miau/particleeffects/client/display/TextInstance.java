@@ -1,7 +1,7 @@
 package org.miau.particleeffects.client.display;
 
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.AnimationToken;
 import org.miau.particleeffects.animation.AnimCategory;
@@ -10,6 +10,7 @@ import org.miau.particleeffects.client.raster.FontRasterizer;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.ColorMode;
 import org.miau.particleeffects.model.TextDisplayParams;
+import org.miau.particleeffects.util.WorldTime;
 
 import java.util.List;
 
@@ -30,7 +31,7 @@ public final class TextInstance extends DisplayInstance {
     private final float minLocalX;
     private final float maxLocalX;
     private final float hueOffset;
-    private Vec3d lastBaseOffset = null;
+    private Vec3 lastBaseOffset = null;
 
     public TextInstance(TextDisplayParams params) {
         super(params.pos(), params.orientation(),
@@ -53,7 +54,7 @@ public final class TextInstance extends DisplayInstance {
     }
 
     @Override
-    public void spawnParticles(ClientWorld world) {
+    public void spawnParticles(ClientLevel world) {
         if (phase == Phase.DELETED || phase == Phase.PENDING) {
             return;
         }
@@ -63,14 +64,14 @@ public final class TextInstance extends DisplayInstance {
 
         float progress = easedProgress();
         float fadeAlpha = computeFadeAlpha();
-        Vec3d moveOffset = computeMoveOffset(tickCounter, 0f);
+        Vec3 moveOffset = computeMoveOffset(tickCounter, 0f);
 
         AnimationSet activeAnim = phase == Phase.ENTER ? entryAnim
                 : phase == Phase.EXIT ? exitAnim
                 : AnimationSet.EMPTY;
 
         float scaleFactor = 1f;
-        Vec3d slideOffset = Vec3d.ZERO;
+        Vec3 slideOffset = Vec3.ZERO;
         float spacingFactor = 1f;
         float clarityFactor = 1f;
 
@@ -89,13 +90,13 @@ public final class TextInstance extends DisplayInstance {
             }
         }
 
-        Vec3d baseOffset = pos.add(moveOffset).add(slideOffset);
+        Vec3 baseOffset = pos.add(moveOffset).add(slideOffset);
         int stride = Math.max(1, Math.round(clarityFactor));
         ColorMode colorMode = params.colorMode();
-        long worldTime = world.getTime();
+        long worldTime = WorldTime.ticks(world);
 
         // 位移速度：让本 tick 重生成的像素粒子沿位移方向滑行，使旧层与新层重合，消除残影。
-        Vec3d delta = Vec3d.ZERO;
+        Vec3 delta = Vec3.ZERO;
         if (lastBaseOffset != null) {
             delta = baseOffset.subtract(lastBaseOffset);
         }
@@ -103,7 +104,7 @@ public final class TextInstance extends DisplayInstance {
 
         for (int i = 0; i < pixels.size(); i += stride) {
             FontRasterizer.ParticlePixel px = pixels.get(i);
-            if (fadeAlpha < 0.999f && world.random.nextFloat() >= fadeAlpha) {
+            if (fadeAlpha < 0.999f && world.getRandom().nextFloat() >= fadeAlpha) {
                 continue;
             }
             int argb = px.colorArgb();
@@ -111,8 +112,8 @@ public final class TextInstance extends DisplayInstance {
             float sizeFactor = 0.35f + 0.65f * pixelAlpha;
             float localX = px.localX() * spacingFactor * scaleFactor;
             float localY = px.localY() * scaleFactor;
-            Vec3d local = transformLocalToWorld(localX, localY);
-            Vec3d worldPos = baseOffset.add(local);
+            Vec3 local = transformLocalToWorld(localX, localY);
+            Vec3 worldPos = baseOffset.add(local);
             if (colorMode == ColorMode.RAINBOW_COLOR) {
                 ColoredEndRodParticle.spawnRainbow(world, worldPos.x, worldPos.y, worldPos.z,
                         delta.x, delta.y, delta.z, sizeFactor, 2, hueOffset, false, params.force());
@@ -149,24 +150,24 @@ public final class TextInstance extends DisplayInstance {
         return lerp(1f, extreme, progress);
     }
 
-    private Vec3d computeSlideOffset(AnimationToken token, float progress) {
+    private Vec3 computeSlideOffset(AnimationToken token, float progress) {
         String dir = token.style();
         float distance = params.scale() * 5f;
         float offset;
-        Vec3d dirVec;
+        Vec3 dirVec;
         if (phase == Phase.ENTER) {
             offset = lerp(distance, 0f, progress);
         } else {
             offset = lerp(0f, distance, progress);
         }
         dirVec = switch (dir) {
-            case "up" -> new Vec3d(0, 1, 0);
-            case "down" -> new Vec3d(0, -1, 0);
+            case "up" -> new Vec3(0, 1, 0);
+            case "down" -> new Vec3(0, -1, 0);
             case "left" -> transformLocalToWorld(-1f, 0f);
             case "right" -> transformLocalToWorld(1f, 0f);
-            default -> Vec3d.ZERO;
+            default -> Vec3.ZERO;
         };
-        return dirVec.multiply(offset);
+        return dirVec.scale(offset);
     }
 
     private float computeSpacingFactor(AnimationToken token, float progress) {
@@ -188,7 +189,7 @@ public final class TextInstance extends DisplayInstance {
         return lerp(1f, extreme, progress);
     }
 
-    private Vec3d transformLocalToWorld(float localX, float localY) {
+    private Vec3 transformLocalToWorld(float localX, float localY) {
         float yawRad = (float) Math.toRadians(orientation.yaw());
         float pitchRad = (float) Math.toRadians(orientation.pitch());
         float rollRad = (float) Math.toRadians(orientation.roll());
@@ -211,7 +212,7 @@ public final class TextInstance extends DisplayInstance {
         float x3 = x1 * cosY + z2 * sinY;
         float z3 = -x1 * sinY + z2 * cosY;
 
-        return new Vec3d(x3, y2, z3);
+        return new Vec3(x3, y2, z3);
     }
 
     private static float lerp(float a, float b, float t) {

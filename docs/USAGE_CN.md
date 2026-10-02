@@ -214,7 +214,23 @@ color=rainbow
 
 `speed` 单位是方块/秒。速度越大，水波越快展开。展开阶段使用粒子速度插值，避免环面以 20 tick/秒的离散位置跳动。
 
-## 七、音符盒弹力球
+## 七、音符盒弹力球（按轨道）
+
+### 1. 先选择轨道
+
+每条轨道对应一颗弹力球，开启前必须手动选择轨道：
+
+```text
+/mpe noteblock select start [link=3]   # 进入选择模式（link 为轨道内相邻音符盒的最大水平间距，1~8）
+# 左键点击每条链式轨道上的任意方块（不会真的破坏方块）
+/mpe noteblock select done             # 结束选择，识别轨道
+/mpe noteblock select clear            # 清空已点击的种子（仍在选择模式）
+/mpe noteblock select status           # 查看选择进度与已识别轨道
+```
+
+轨道识别规则：从点击的方块出发，在**同一 Y 层**内按水平间距 ≤ `link` 连通扩散出整条轨道的音符盒。种子点可以落在中继器、红石线等非音符盒方块上（自动吸附 3 格内最近的音符盒）。由于限定同一 Y 层，上下叠放的轨道互不连通，因此不会串轨。最多选择 **32 条轨道**。
+
+### 2. 开启
 
 ```text
 /mpe noteblock on [选项]
@@ -222,6 +238,8 @@ color=rainbow
 /mpe noteblock status
 /mpe noteblock set [选项]
 ```
+
+未选择轨道就执行 `on` 会提示先完成选择。
 
 ### 参数
 
@@ -231,15 +249,19 @@ color=rainbow
 | `radius=` | 水平检测半径，范围 `1` 到 `256` | `16` |
 | `trail=` | 拖尾粒子数，范围 `2` 到 `256` | `24` |
 | `curve=` | `line`、`arc`、`sine` | `arc` |
-| `count=` | 弹力球数量，范围 `1` 到 `8` | `1` |
 | `height=` | 抛物线最高点相对高度，范围 `0.5` 到 `64` | `3` |
+| `force=` | 忽略粒子距离剔除 | `false` |
+
+> 弹力球数量不再通过 `count=` 指定：**球数 = 已选轨道数**（上限 32）。
 
 示例：
 
 ```text
-/mpe noteblock on radius=32 trail=24 curve=arc count=2 height=3
-/mpe noteblock on selector=@p radius=24 curve=sine count=4
-/mpe noteblock set trail=12 count=3 height=2
+/mpe noteblock select start link=3
+# 左键依次点击每条轨道后：
+/mpe noteblock select done
+/mpe noteblock on radius=32 trail=24 curve=arc height=3
+/mpe noteblock set trail=12 height=2
 /mpe noteblock status
 /mpe noteblock off
 ```
@@ -249,11 +271,11 @@ color=rainbow
 - 玩家执行时，中心是玩家位置。
 - 命令方块未指定 `selector=` 时，中心默认使用 `@p`。
 - 目标位置是被激活音符盒的**上表面中心**：方块坐标加 `(0.5, 1.0, 0.5)`。
+- 一颗弹力球绑定一条轨道（`ballIndex == trackIndex`），只响应本轨道的音符盒，不会串轨或卡在别的轨道上。
+- 同一轨道同 tick 多个音符 → 随机取其中一个。
 - Y 轴使用抛物线，最高点由 `height=` 控制。
 - X/Z 平面使用 `line`、`arc`、`sine` 曲线。
-- 同一个服务端 tick 内激活的多个音符盒会先批量分配。
-- 音符盒数量大于等于弹力球数量时，不会重复跳到同一个目标。
-- 目标少于弹力球时，允许多个弹力球共享目标。
+- 服务端会学习每条轨道内的音符先后顺序，提前预判下一个音符盒并下发，让弹力球跟上歌曲速度。
 - 拖尾粒子按 `trail=` 数量自然淡出。
 - 彗星头是较大的圆形光球，拖尾是较小的星形粒子。
 

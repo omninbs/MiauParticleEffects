@@ -1,10 +1,10 @@
 package org.miau.particleeffects.command;
 
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import net.minecraft.entity.Entity;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.UUID;
@@ -18,7 +18,7 @@ public final class EntityResolver {
     private EntityResolver() {
     }
 
-    public static Entity resolve(ServerCommandSource source, String selector) throws CommandSyntaxException {
+    public static Entity resolve(CommandSourceStack source, String selector) throws CommandSyntaxException {
         String s = selector == null ? "" : selector.trim();
         if (s.isEmpty()) {
             throw Feedback.error("实体选择器不能为空");
@@ -43,14 +43,18 @@ public final class EntityResolver {
         if (source.getServer() == null) {
             throw Feedback.error("服务端不可用");
         }
-        ServerPlayerEntity byName = source.getServer().getPlayerManager().getPlayer(s);
+        /*? if >=26.1 {*/
+        ServerPlayer byName = source.getServer().getPlayerList().getPlayer(s);
+        /*?} else {*/
+        /*ServerPlayer byName = source.getServer().getPlayerList().getPlayerByName(s);
+        *//*?}*/
         if (byName != null) {
             return byName;
         }
         try {
             UUID uuid = UUID.fromString(s);
-            for (ServerPlayerEntity player : source.getServer().getPlayerManager().getPlayerList()) {
-                if (player.getUuid().equals(uuid)) {
+            for (ServerPlayer player : source.getServer().getPlayerList().getPlayers()) {
+                if (player.getUUID().equals(uuid)) {
                     return player;
                 }
             }
@@ -60,20 +64,20 @@ public final class EntityResolver {
         throw Feedback.error("无法解析实体选择器 '" + selector + "'，支持 @p/@a/@e/@s、玩家名或 UUID");
     }
 
-    public static ServerPlayerEntity nearestPlayer(ServerCommandSource source) throws CommandSyntaxException {
+    public static ServerPlayer nearestPlayer(CommandSourceStack source) throws CommandSyntaxException {
         if (source.getServer() == null) {
             throw Feedback.error("服务端不可用");
         }
-        List<ServerPlayerEntity> players = source.getServer().getPlayerManager().getPlayerList();
+        List<ServerPlayer> players = source.getServer().getPlayerList().getPlayers();
         if (players.isEmpty()) {
             throw Feedback.error("没有在线玩家可以用作目标");
         }
-        Vec3d origin = source.getPosition();
-        ServerPlayerEntity best = players.get(0);
-        double bestDist = best.squaredDistanceTo(origin);
+        Vec3 origin = source.getPosition();
+        ServerPlayer best = players.get(0);
+        double bestDist = best.distanceToSqr(origin);
         for (int i = 1; i < players.size(); i++) {
-            ServerPlayerEntity player = players.get(i);
-            double dist = player.squaredDistanceTo(origin);
+            ServerPlayer player = players.get(i);
+            double dist = player.distanceToSqr(origin);
             if (dist < bestDist) {
                 best = player;
                 bestDist = dist;

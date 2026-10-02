@@ -2,7 +2,7 @@ package org.miau.particleeffects.server;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.commands.CommandSourceStack;
 import org.miau.particleeffects.config.ConfigManager;
 import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.EffectDisplayParams;
@@ -51,9 +51,9 @@ public final class MiauParticleEffectsServer {
     private MiauParticleEffectsServer() {
     }
 
-    public static String showText(ServerCommandSource source, TextDisplayParams paramsIn) {
+    public static String showText(CommandSourceStack source, TextDisplayParams paramsIn) {
         MinecraftServer server = source.getServer();
-        long now = server.getTicks();
+        long now = server.getTickCount();
         prune(server);
         String id = assignId(paramsIn.id());
         TextDisplayParams params = paramsIn.withId(id);
@@ -79,9 +79,9 @@ public final class MiauParticleEffectsServer {
         return id;
     }
 
-    public static String showEffect(ServerCommandSource source, EffectDisplayParams paramsIn) {
+    public static String showEffect(CommandSourceStack source, EffectDisplayParams paramsIn) {
         MinecraftServer server = source.getServer();
-        long now = server.getTicks();
+        long now = server.getTickCount();
         prune(server);
         String id = assignId(paramsIn.id());
         EffectDisplayParams params = paramsIn.withId(id);
@@ -91,9 +91,9 @@ public final class MiauParticleEffectsServer {
         return id;
     }
 
-    public static int clear(ServerCommandSource source, ClearScope scope, String id) {
+    public static int clear(CommandSourceStack source, ClearScope scope, String id) {
         MinecraftServer server = source.getServer();
-        long now = server.getTicks();
+        long now = server.getTickCount();
         if (scope == ClearScope.ALL) {
             int removed = ACTIVE.size();
             ACTIVE.clear();
@@ -126,15 +126,23 @@ public final class MiauParticleEffectsServer {
         return true;
     }
 
-    public static void noteBlockOn(MinecraftServer server, NoteBlockParams params) {
+    /** 已识别出的轨道数量（= 弹力球数量）。 */
+    public static int noteBlockTrackCount() {
+        return NoteTrackManager.trackCount();
+    }
+
+    public static void noteBlockOn(MinecraftServer server, NoteBlockParams paramsIn) {
         if (noteBlockRuntime != null) {
             NoteBlockEvents.unregister(noteBlockRuntime);
         }
-        NoteBlockRuntime runtime = new NoteBlockRuntime(params);
+        // 一颗弹力球对应一条轨道。
+        NoteBlockParams params = paramsIn.withBallCount(NoteTrackManager.trackCount());
+        NoteBlockRuntime runtime = new NoteBlockRuntime(params, NoteTrackManager.tracks());
         runtime.bindServer(server);
         noteBlockRuntime = runtime;
         NoteBlockEvents.register(runtime);
-        MiauParticleEffectsPackets.broadcast(server, new MiauParticleEffectsPackets.NoteBlockStartPayload(params));
+        MiauParticleEffectsPackets.broadcast(server,
+                new MiauParticleEffectsPackets.NoteBlockStartPayload(params, NoteTrackManager.anchors()));
     }
 
     public static boolean noteBlockOff(MinecraftServer server) {
@@ -151,12 +159,7 @@ public final class MiauParticleEffectsServer {
         if (noteBlockRuntime == null) {
             return false;
         }
-        NoteBlockEvents.unregister(noteBlockRuntime);
-        NoteBlockRuntime runtime = new NoteBlockRuntime(params);
-        runtime.bindServer(server);
-        noteBlockRuntime = runtime;
-        NoteBlockEvents.register(runtime);
-        MiauParticleEffectsPackets.broadcast(server, new MiauParticleEffectsPackets.NoteBlockStartPayload(params));
+        noteBlockOn(server, params);
         return true;
     }
 
@@ -164,11 +167,12 @@ public final class MiauParticleEffectsServer {
         return noteBlockRuntime != null ? noteBlockRuntime.config() : null;
     }
 
-    public static void onBallLanded(int ballIndex) {
+    /** 重新选择轨道后，若特效正在运行，用新轨道立即重启。 */
+    public static void refreshNoteBlockTracks(MinecraftServer server) {
         if (noteBlockRuntime == null) {
             return;
         }
-        noteBlockRuntime.onBallLanded(ballIndex);
+        noteBlockOn(server, noteBlockRuntime.config());
     }
 
     private static String assignId(String requested) {
@@ -186,7 +190,7 @@ public final class MiauParticleEffectsServer {
      * 移除已自然到期的显示记录，避免 ACTIVE 无限增长、自定义 id 无法复用。
      */
     private static void prune(MinecraftServer server) {
-        long now = server.getTicks();
+        long now = server.getTickCount();
         ACTIVE.entrySet().removeIf(entry -> !entry.getValue().isActive(now));
     }
 }

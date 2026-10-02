@@ -6,16 +6,19 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import net.minecraft.command.argument.Vec3ArgumentType;
-import net.minecraft.command.permission.Permission;
-import net.minecraft.command.permission.PermissionLevel;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.coordinates.Vec3Argument;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
+/*? if >=1.21.11 {*/
+import net.minecraft.server.permissions.Permission;
+import net.minecraft.server.permissions.PermissionLevel;
+/*?}*/
 import org.joml.Vector3f;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.Easing;
@@ -34,6 +37,7 @@ import org.miau.particleeffects.model.Orientation;
 import org.miau.particleeffects.model.RotationSpec;
 import org.miau.particleeffects.model.TextDisplayParams;
 import org.miau.particleeffects.server.MiauParticleEffectsServer;
+import org.miau.particleeffects.server.NoteTrackManager;
 
 import java.util.List;
 import java.util.Locale;
@@ -130,28 +134,48 @@ public final class MiauParticleEffectsCommand {
             """;
 
     private static final String HELP_NOTEBLOCK = """
-            §6/mpe noteblock <on|off|status|set> [options]§r 音符盒弹力球
+            §6/mpe noteblock <select|on|off|status|set> [options]§r 音符盒弹力球
+            使用顺序：先选择轨道 → 开启。
             子命令：
-              on      开启检测（弹力球会跳到激活的音符盒上）
+              select  选择轨道（见 /mpe help noteblock select）
+              on      开启（弹力球数量 = 已选轨道数，每条轨道一颗球）
               off     关闭并移除所有弹力球与拖尾
               status  查看当前参数
-              set     运行中修改参数（弹力球从中心重新开始）
+              set     运行中修改参数
             选项（键=值，on / set 时使用）：
               selector=   实体选择器 @p/@a/@e/@s/玩家名/UUID
                           （玩家执行默认=自己；命令方块默认=@p）
               radius=     检测半径(方块)   默认 16   范围 1~256
               trail=      拖尾长度(粒子数) 默认 24   范围 2~256
-              curve=      水平运动曲线 line / arc / sine   默认 arc
-              count=      弹力球数量       默认 1    范围 1~8
+              curve=      竖直起伏曲线 line / arc / sine   默认 arc
               height=     跳动最大高度(方块) 默认 3   范围 0.5~64
               force=      强制粒子显示，不受距离裁剪（可能增加客户端开销）默认 false
-            说明：竖直方向为固定抛物线（受 height 限制），
-                  水平方向遵循 curve（直线/弧形/正弦摆动）。
-                  多个音符盒同时激活时弹力球均匀分布，不重复跳同一目标；
-                  目标少于弹力球时允许多球共跳。
+            说明：水平方向为直线飞向目标音符盒；竖直方向按 curve 起伏
+                  （arc=抛物线 / sine=正弦 / line=不弹跳），最高点受 height 限制。
+                  每条轨道一颗弹力球、单独计算，互不串轨；同一轨道同时触发多个音符时
+                  随机取其中一个。服务端会预测本轨的下一个音符盒并提前下发，跟得上歌曲节奏。
             示例：
-              /mpe noteblock on radius=32 trail=24 curve=arc count=2 height=3
-              /mpe noteblock set radius=16 count=4
+              /mpe noteblock select start
+              /mpe noteblock select done
+              /mpe noteblock on radius=32 trail=24 curve=arc height=3
+            """;
+
+    private static final String HELP_NOTEBLOCK_SELECT = """
+            §6/mpe noteblock select <start|done|clear|status> [options]§r 选择轨道
+            子命令：
+              start   进入选择模式；随后左键点击每条链式轨道上的任意方块
+                      （不会真的破坏方块），每条轨道点一下即可
+              done    结束选择并识别轨道（之后即可 /mpe noteblock on）
+              clear   清空已记录的选择（保持在选择模式）
+              status  查看选择进度与已识别轨道
+            选项（start 时使用）：
+              link=   同一条轨道内相邻音符盒的最大水平间距  默认 3   范围 1~8
+            规则：轨道 = 同一 Y 层、水平相邻（间距不超过 link）连通的一组音符盒；
+                  上下层不连通，因此不同轨道不会串在一起。
+            上限：最多 32 条轨道（即最多 32 颗弹力球）。
+            示例：
+              /mpe noteblock select start link=3
+              /mpe noteblock select done
             """;
 
     private static final String HELP_CLEAR = """
@@ -182,6 +206,7 @@ public final class MiauParticleEffectsCommand {
             case "text" -> HELP_TEXT;
             case "effect" -> HELP_EFFECT;
             case "noteblock", "note", "nb" -> HELP_NOTEBLOCK;
+            case "select" -> HELP_NOTEBLOCK_SELECT;
             case "clear" -> HELP_CLEAR;
             case "autoclear" -> HELP_AUTOCLEAR;
             default -> null;
@@ -191,16 +216,24 @@ public final class MiauParticleEffectsCommand {
     private MiauParticleEffectsCommand() {
     }
 
-    public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(build("miauparticleeffects"));
         dispatcher.register(build("mpe"));
     }
 
-    private static final Permission REQUIRED_PERMISSION = new Permission.Level(PermissionLevel.GAMEMASTERS);
+    /*? if >=1.21.11 {*/
+    private static final Permission REQUIRED_PERMISSION = new Permission.HasCommandLevel(PermissionLevel.GAMEMASTERS);
+    /*?}*/
 
-    private static LiteralArgumentBuilder<ServerCommandSource> build(String name) {
-        return CommandManager.literal(name)
-                .requires(src -> src.getPermissions().hasPermission(REQUIRED_PERMISSION))
+    private static LiteralArgumentBuilder<CommandSourceStack> build(String name) {
+        return Commands.literal(name)
+                .requires(src -> {
+                    /*? if >=1.21.11 {*/
+                    return src.permissions().hasPermission(REQUIRED_PERMISSION);
+                    /*?} else {*/
+                    /*return src.hasPermission(2);
+                    *//*?}*/
+                })
                 .then(helpNode())
                 .then(densityNode())
                 .then(textNode())
@@ -214,13 +247,13 @@ public final class MiauParticleEffectsCommand {
                 });
     }
 
-    private static LiteralArgumentBuilder<ServerCommandSource> helpNode() {
-        return CommandManager.literal("help")
+    private static LiteralArgumentBuilder<CommandSourceStack> helpNode() {
+        return Commands.literal("help")
                 .executes(ctx -> {
                     Feedback.send(ctx.getSource(), HELP_OVERVIEW);
                     return 1;
                 })
-                .then(CommandManager.argument("sub", StringArgumentType.word())
+                .then(Commands.argument("sub", StringArgumentType.word())
                         .executes(ctx -> {
                             String sub = StringArgumentType.getString(ctx, "sub").toLowerCase(Locale.ROOT);
                             String help = subHelp(sub);
@@ -235,13 +268,13 @@ public final class MiauParticleEffectsCommand {
 
     // ------------------------------------------------------------------ density
 
-    private static LiteralArgumentBuilder<ServerCommandSource> densityNode() {
-        return CommandManager.literal("density")
+    private static LiteralArgumentBuilder<CommandSourceStack> densityNode() {
+        return Commands.literal("density")
                 .executes(ctx -> {
                     Feedback.send(ctx.getSource(), HELP_DENSITY);
                     return 1;
                 })
-                .then(CommandManager.argument("value", DoubleArgumentType.doubleArg(0.01, 1.0))
+                .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.01, 1.0))
                         .executes(ctx -> {
                             double value = DoubleArgumentType.getDouble(ctx, "value");
                             ConfigManager.get().density = value;
@@ -254,26 +287,26 @@ public final class MiauParticleEffectsCommand {
 
     // ------------------------------------------------------------------ text
 
-    private static LiteralArgumentBuilder<ServerCommandSource> textNode() {
-        return CommandManager.literal("text")
+    private static LiteralArgumentBuilder<CommandSourceStack> textNode() {
+        return Commands.literal("text")
                 .executes(ctx -> {
                     Feedback.send(ctx.getSource(), HELP_TEXT);
                     return 1;
                 })
-                .then(CommandManager.argument("text", StringArgumentType.string())
-                        .then(CommandManager.argument("pos", Vec3ArgumentType.vec3())
+                .then(Commands.argument("text", StringArgumentType.string())
+                        .then(Commands.argument("pos", Vec3Argument.vec3())
                                 .executes(ctx -> executeText(ctx, Options.EMPTY))
-                                .then(CommandManager.argument("options", StringArgumentType.greedyString())
+                                .then(Commands.argument("options", StringArgumentType.greedyString())
                                         .executes(ctx -> executeText(
                                                 ctx, Options.parse(StringArgumentType.getString(ctx, "options")))))));
     }
 
-    private static int executeText(CommandContext<ServerCommandSource> ctx, Options options)
+    private static int executeText(CommandContext<CommandSourceStack> ctx, Options options)
             throws CommandSyntaxException {
-        ServerCommandSource src = ctx.getSource();
+        CommandSourceStack src = ctx.getSource();
         String text = StringArgumentType.getString(ctx, "text");
-        Vec3d pos = Vec3ArgumentType.getVec3(ctx, "pos");
-        ServerWorld world = src.getWorld();
+        Vec3 pos = Vec3Argument.getVec3(ctx, "pos");
+        ServerLevel world = src.getLevel();
         if (!isChunkLoaded(world, pos)) {
             throw Feedback.error("目标坐标所在区块未加载");
         }
@@ -288,7 +321,7 @@ public final class MiauParticleEffectsCommand {
         return 1;
     }
 
-    private static TextDisplayParams parseText(String text, Vec3d pos, Options o) {
+    private static TextDisplayParams parseText(String text, Vec3 pos, Options o) {
         o.checkKeys("scale", "color", "gradient", "force", "towards", "duration", "enter", "exit", "delay",
                 "curve", "in", "out", "fade", "spread", "move", "id");
         float scale = (float) o.optDouble("scale", ConfigManager.get().defaultScale, 0.05, 64);
@@ -315,29 +348,29 @@ public final class MiauParticleEffectsCommand {
 
     // ------------------------------------------------------------------ effect
 
-    private static LiteralArgumentBuilder<ServerCommandSource> effectNode() {
-        return CommandManager.literal("effect")
+    private static LiteralArgumentBuilder<CommandSourceStack> effectNode() {
+        return Commands.literal("effect")
                 .executes(ctx -> {
                     Feedback.send(ctx.getSource(), HELP_EFFECT);
                     return 1;
                 })
-                .then(CommandManager.argument("type", StringArgumentType.word())
-                        .then(CommandManager.argument("pos", Vec3ArgumentType.vec3())
+                .then(Commands.argument("type", StringArgumentType.word())
+                        .then(Commands.argument("pos", Vec3Argument.vec3())
                                 .executes(ctx -> executeEffect(ctx, Options.EMPTY))
-                                .then(CommandManager.argument("options", StringArgumentType.greedyString())
+                                .then(Commands.argument("options", StringArgumentType.greedyString())
                                         .executes(ctx -> executeEffect(
                                                 ctx, Options.parse(StringArgumentType.getString(ctx, "options")))))));
     }
 
-    private static int executeEffect(CommandContext<ServerCommandSource> ctx, Options options)
+    private static int executeEffect(CommandContext<CommandSourceStack> ctx, Options options)
             throws CommandSyntaxException {
-        ServerCommandSource src = ctx.getSource();
+        CommandSourceStack src = ctx.getSource();
         EffectType type = EffectType.parse(StringArgumentType.getString(ctx, "type"));
         if (type == null) {
             throw Feedback.error("未知特效类型，可选：cube / tetra / explosion / wave");
         }
-        Vec3d pos = Vec3ArgumentType.getVec3(ctx, "pos");
-        ServerWorld world = src.getWorld();
+        Vec3 pos = Vec3Argument.getVec3(ctx, "pos");
+        ServerLevel world = src.getLevel();
         if (!isChunkLoaded(world, pos)) {
             throw Feedback.error("目标坐标所在区块未加载");
         }
@@ -352,7 +385,7 @@ public final class MiauParticleEffectsCommand {
         return 1;
     }
 
-    private static EffectDisplayParams parseEffect(EffectType type, Vec3d pos, Options o) {
+    private static EffectDisplayParams parseEffect(EffectType type, Vec3 pos, Options o) {
         o.checkKeys("size", "speed", "color", "gradient", "force", "towards", "rotate", "duration", "enter", "exit", "delay",
                 "curve", "in", "out", "fade", "move", "id");
         double defaultSize = switch (type) {
@@ -422,34 +455,111 @@ public final class MiauParticleEffectsCommand {
 
     // ------------------------------------------------------------------ noteblock
 
-    private static LiteralArgumentBuilder<ServerCommandSource> noteblockNode() {
-        return CommandManager.literal("noteblock")
+    private static LiteralArgumentBuilder<CommandSourceStack> noteblockNode() {
+        return Commands.literal("noteblock")
                 .executes(ctx -> {
                     Feedback.send(ctx.getSource(), HELP_NOTEBLOCK);
                     return 1;
                 })
-                .then(CommandManager.literal("on")
+                .then(selectNode())
+                .then(Commands.literal("on")
                         .executes(ctx -> executeNoteBlockOn(ctx, Options.EMPTY))
-                        .then(CommandManager.argument("options", StringArgumentType.greedyString())
+                        .then(Commands.argument("options", StringArgumentType.greedyString())
                                 .executes(ctx -> executeNoteBlockOn(
                                         ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))))
-                .then(CommandManager.literal("off").executes(MiauParticleEffectsCommand::executeNoteBlockOff))
-                .then(CommandManager.literal("status").executes(MiauParticleEffectsCommand::executeNoteBlockStatus))
-                .then(CommandManager.literal("set")
+                .then(Commands.literal("off").executes(MiauParticleEffectsCommand::executeNoteBlockOff))
+                .then(Commands.literal("status").executes(MiauParticleEffectsCommand::executeNoteBlockStatus))
+                .then(Commands.literal("set")
                         .executes(ctx -> {
                             Feedback.send(ctx.getSource(), HELP_NOTEBLOCK);
                             return 1;
                         })
-                        .then(CommandManager.argument("options", StringArgumentType.greedyString())
+                        .then(Commands.argument("options", StringArgumentType.greedyString())
                                 .executes(ctx -> executeNoteBlockSet(
                                         ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))));
     }
 
-    private static int executeNoteBlockOn(CommandContext<ServerCommandSource> ctx, Options options)
+    private static LiteralArgumentBuilder<CommandSourceStack> selectNode() {
+        return Commands.literal("select")
+                .executes(ctx -> {
+                    Feedback.send(ctx.getSource(), HELP_NOTEBLOCK_SELECT);
+                    return 1;
+                })
+                .then(Commands.literal("start")
+                        .executes(ctx -> executeSelectStart(ctx, Options.EMPTY))
+                        .then(Commands.argument("options", StringArgumentType.greedyString())
+                                .executes(ctx -> executeSelectStart(
+                                        ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))))
+                .then(Commands.literal("done").executes(MiauParticleEffectsCommand::executeSelectDone))
+                .then(Commands.literal("clear").executes(ctx -> {
+                    CommandSourceStack src = ctx.getSource();
+                    ServerPlayer player = src.getPlayer();
+                    if (player == null || !NoteTrackManager.ownsSelection(player, src.getLevel())) {
+                        throw Feedback.error("当前选择模式属于另一名玩家，或尚未开启选择模式");
+                    }
+                    NoteTrackManager.clearSeeds();
+                    Feedback.send(src, "已清空轨道选择（仍在选择模式）");
+                    return 1;
+                }))
+                .then(Commands.literal("status").executes(ctx -> {
+                    CommandSourceStack src = ctx.getSource();
+                    Feedback.send(src, "选择模式：" + (NoteTrackManager.isSelecting() ? "进行中" : "未开启")
+                            + "  已点击种子：" + NoteTrackManager.seedCount() + " / " + NoteTrackManager.MAX_TRACKS
+                            + "  已识别轨道：" + NoteTrackManager.trackCount()
+                            + "（" + NoteTrackManager.totalNoteBlocks() + " 个音符盒）");
+                    return 1;
+                }));
+    }
+
+    private static int executeSelectStart(CommandContext<CommandSourceStack> ctx, Options options)
             throws CommandSyntaxException {
-        ServerCommandSource src = ctx.getSource();
+        CommandSourceStack src = ctx.getSource();
+        ServerPlayer player = src.getPlayer();
+        if (player == null) {
+            throw Feedback.error("该命令只能由玩家执行");
+        }
+        int link;
+        try {
+            options.checkKeys("link");
+            link = options.optInt("link", NoteTrackManager.DEFAULT_LINK, 1, 8);
+        } catch (IllegalArgumentException e) {
+            throw Feedback.error(e.getMessage());
+        }
+        NoteTrackManager.beginSelection(player, src.getLevel(), link);
+        Feedback.send(src, "已进入轨道选择模式（link=" + link
+                + "）：左键点击每条链式轨道上的任意方块（不会真的破坏），"
+                + "每条轨道点一下；选完输入 /mpe noteblock select done");
+        return 1;
+    }
+
+    private static int executeSelectDone(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        CommandSourceStack src = ctx.getSource();
+        ServerPlayer player = src.getPlayer();
+        if (player == null) {
+            throw Feedback.error("该命令只能由玩家执行");
+        }
+        if (!NoteTrackManager.ownsSelection(player, src.getLevel())) {
+            throw Feedback.error("当前选择模式属于另一名玩家，或尚未开启选择模式");
+        }
+        int count = NoteTrackManager.finishSelection(src.getLevel(), NoteTrackManager.link());
+        if (count == 0) {
+            throw Feedback.error("未能从所选方块识别出音符盒轨道，请点击音符盒附近（3 格内）的方块后重试");
+        }
+        MiauParticleEffectsServer.refreshNoteBlockTracks(src.getServer());
+        Feedback.send(src, "已识别 " + count + " 条轨道，共 " + NoteTrackManager.totalNoteBlocks()
+                + " 个音符盒；输入 /mpe noteblock on 开启");
+        return 1;
+    }
+
+    private static int executeNoteBlockOn(CommandContext<CommandSourceStack> ctx, Options options)
+            throws CommandSyntaxException {
+        CommandSourceStack src = ctx.getSource();
+        if (NoteTrackManager.trackCount() == 0) {
+            throw Feedback.error("尚未选择轨道，请先执行 /mpe noteblock select start，"
+                    + "左键点击每条轨道后 /mpe noteblock select done");
+        }
         Entity centerEntity = resolveCenterEntity(src, options.optString("selector", ""));
-        Vec3d center = centerEntity.getEntityPos();
+        Vec3 center = centerEntity.position();
         NoteBlockParams base = new NoteBlockParams(
                 center,
                 NoteBlockParams.DEFAULT_RADIUS,
@@ -472,7 +582,7 @@ public final class MiauParticleEffectsCommand {
         return 1;
     }
 
-    private static int executeNoteBlockOff(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+    private static int executeNoteBlockOff(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         if (!MiauParticleEffectsServer.noteBlockOff(ctx.getSource().getServer())) {
             throw Feedback.error("音符盒特效未开启");
         }
@@ -480,7 +590,7 @@ public final class MiauParticleEffectsCommand {
         return 1;
     }
 
-    private static int executeNoteBlockStatus(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+    private static int executeNoteBlockStatus(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         NoteBlockParams params = MiauParticleEffectsServer.noteBlockStatus();
         if (params == null) {
             Feedback.send(ctx.getSource(), "音符盒弹力球当前：关闭（使用 /mpe noteblock on 开启）");
@@ -493,7 +603,7 @@ public final class MiauParticleEffectsCommand {
         return 1;
     }
 
-    private static int executeNoteBlockSet(CommandContext<ServerCommandSource> ctx, Options options)
+    private static int executeNoteBlockSet(CommandContext<CommandSourceStack> ctx, Options options)
             throws CommandSyntaxException {
         NoteBlockParams current = MiauParticleEffectsServer.noteBlockStatus();
         if (current == null) {
@@ -506,26 +616,25 @@ public final class MiauParticleEffectsCommand {
             throw Feedback.error(e.getMessage());
         }
         MiauParticleEffectsServer.noteBlockSet(ctx.getSource().getServer(), params);
-        Feedback.send(ctx.getSource(), "音符盒参数已更新（弹力球从中心重新开始）");
+        Feedback.send(ctx.getSource(), "音符盒参数已更新（弹力球回到各自轨道锚点重新开始）");
         return 1;
     }
 
-    private static NoteBlockParams parseNoteBlock(Vec3d center, Options o, NoteBlockParams base) {
-        o.checkKeys("selector", "radius", "trail", "curve", "count", "height", "force");
+    private static NoteBlockParams parseNoteBlock(Vec3 center, Options o, NoteBlockParams base) {
+        o.checkKeys("selector", "radius", "trail", "curve", "height", "force");
         float radius = (float) o.optDouble("radius", base.radius(), 1, 256);
         int trail = o.optInt("trail", base.trailCount(), 2, 256);
         HorizontalCurve curve = o.optEnum("curve", HorizontalCurve::parse, base.curve());
-        int balls = o.optInt("count", base.ballCount(), 1, 8);
         float height = (float) o.optDouble("height", base.maxJumpHeight(), 0.5, 64);
         boolean force = o.has("force") ? o.optBool("force", base.force()) : base.force();
-        return new NoteBlockParams(center, radius, trail, curve, balls, height, force);
+        return new NoteBlockParams(center, radius, trail, curve, base.ballCount(), height, force);
     }
 
-    private static Entity resolveCenterEntity(ServerCommandSource src, String selector) throws CommandSyntaxException {
+    private static Entity resolveCenterEntity(CommandSourceStack src, String selector) throws CommandSyntaxException {
         if (selector != null && !selector.isBlank()) {
             return EntityResolver.resolve(src, selector);
         }
-        if (src.getEntity() instanceof PlayerEntity player) {
+        if (src.getEntity() instanceof Player player) {
             return player;
         }
         return EntityResolver.nearestPlayer(src);
@@ -533,16 +642,16 @@ public final class MiauParticleEffectsCommand {
 
     // ------------------------------------------------------------------ clear
 
-    private static LiteralArgumentBuilder<ServerCommandSource> clearNode() {
-        return CommandManager.literal("clear")
+    private static LiteralArgumentBuilder<CommandSourceStack> clearNode() {
+        return Commands.literal("clear")
                 .executes(ctx -> executeClear(ctx, null))
-                .then(CommandManager.argument("scope", StringArgumentType.greedyString())
+                .then(Commands.argument("scope", StringArgumentType.greedyString())
                         .executes(ctx -> executeClear(ctx, StringArgumentType.getString(ctx, "scope"))));
     }
 
-    private static int executeClear(CommandContext<ServerCommandSource> ctx, String scopeRaw)
+    private static int executeClear(CommandContext<CommandSourceStack> ctx, String scopeRaw)
             throws CommandSyntaxException {
-        ServerCommandSource src = ctx.getSource();
+        CommandSourceStack src = ctx.getSource();
         if (scopeRaw == null || scopeRaw.isBlank()) {
             int removed = MiauParticleEffectsServer.clear(src, ClearScope.ALL, null);
             Feedback.send(src, "已清除" + removed + " 个显示内容");
@@ -572,17 +681,17 @@ public final class MiauParticleEffectsCommand {
 
     // ------------------------------------------------------------------ autoclear
 
-    private static LiteralArgumentBuilder<ServerCommandSource> autoclearNode() {
-        return CommandManager.literal("autoclear")
+    private static LiteralArgumentBuilder<CommandSourceStack> autoclearNode() {
+        return Commands.literal("autoclear")
                 .executes(ctx -> {
                     Feedback.send(ctx.getSource(), HELP_AUTOCLEAR);
                     return 1;
                 })
-                .then(CommandManager.literal("on").executes(ctx -> setAutoclear(ctx, true)))
-                .then(CommandManager.literal("off").executes(ctx -> setAutoclear(ctx, false)));
+                .then(Commands.literal("on").executes(ctx -> setAutoclear(ctx, true)))
+                .then(Commands.literal("off").executes(ctx -> setAutoclear(ctx, false)));
     }
 
-    private static int setAutoclear(CommandContext<ServerCommandSource> ctx, boolean enabled) {
+    private static int setAutoclear(CommandContext<CommandSourceStack> ctx, boolean enabled) {
         ConfigManager.get().autoclear = enabled;
         ConfigManager.save();
         Feedback.send(ctx.getSource(), "自动清除已" + (enabled ? "开启（新文字会先让旧文字退场）" : "关闭"));
@@ -644,7 +753,7 @@ public final class MiauParticleEffectsCommand {
             throw new IllegalArgumentException("move 时长不能为负");
         }
         Easing curve = requireEasing(parts[4].trim());
-        return new MoveSpec(new Vec3d(dx, dy, dz), ticks, curve);
+        return new MoveSpec(new Vec3(dx, dy, dz), ticks, curve);
     }
 
     private static float parseFloat(String raw, String name) {
@@ -663,12 +772,12 @@ public final class MiauParticleEffectsCommand {
         }
     }
 
-    private static String fmt(Vec3d v) {
+    private static String fmt(Vec3 v) {
         return String.format(Locale.ROOT, "(%.1f, %.1f, %.1f)", v.x, v.y, v.z);
     }
 
-    private static boolean isChunkLoaded(ServerWorld world, Vec3d pos) {
-        BlockPos blockPos = BlockPos.ofFloored(pos);
-        return world.getChunkManager().isChunkLoaded(blockPos.getX() >> 4, blockPos.getZ() >> 4);
+    private static boolean isChunkLoaded(ServerLevel world, Vec3 pos) {
+        BlockPos blockPos = BlockPos.containing(pos);
+        return world.getChunkSource().hasChunk(blockPos.getX() >> 4, blockPos.getZ() >> 4);
     }
 }

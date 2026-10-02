@@ -1,10 +1,10 @@
 package org.miau.particleeffects.particle;
 
 import net.fabricmc.fabric.api.particle.v1.FabricParticleTypes;
-import net.minecraft.particle.SimpleParticleType;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
-import net.minecraft.util.Identifier;
+import net.minecraft.core.particles.SimpleParticleType;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.Registry;
+import net.minecraft.resources.Identifier;
 
 /**
  * 自定义粒子类型：彩色末地烛（外观与原。end_rod 完全一致，但可染任意颜色）
@@ -19,12 +19,12 @@ public final class MiauParticleEffectsParticles {
 
     public static void init() {
         Registry.register(
-                Registries.PARTICLE_TYPE,
-                Identifier.of("miauparticleeffects", "colored_end_rod"),
+                BuiltInRegistries.PARTICLE_TYPE,
+                Identifier.fromNamespaceAndPath("miauparticleeffects", "colored_end_rod"),
                 COLORED_END_ROD);
         Registry.register(
-                Registries.PARTICLE_TYPE,
-                Identifier.of("miauparticleeffects", "colored_head"),
+                BuiltInRegistries.PARTICLE_TYPE,
+                Identifier.fromNamespaceAndPath("miauparticleeffects", "colored_head"),
                 COLORED_HEAD);
     }
 }

@@ -1,8 +1,8 @@
 package org.miau.particleeffects.client.display;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.client.noteblock.NoteBlockSimulation;
 import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.EffectDisplayParams;
@@ -21,7 +21,7 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
 
     private final List<DisplayInstance> instances = new ArrayList<>();
     private final NoteBlockSimulation noteBlockSimulation = new NoteBlockSimulation();
-    private ClientWorld lastWorld;
+    private ClientLevel lastWorld;
 
     private ClientDisplayBackend() {
     }
@@ -80,8 +80,8 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
     }
 
     @Override
-    public void noteBlockStart(NoteBlockParams params) {
-        noteBlockSimulation.start(params);
+    public void noteBlockStart(NoteBlockParams params, List<Vec3> anchors) {
+        noteBlockSimulation.start(params, anchors);
     }
 
     @Override
@@ -90,16 +90,16 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
     }
 
     @Override
-    public void noteBlockActivate(int ballIndex, Vec3d target, int note) {
-        noteBlockSimulation.activate(ballIndex, target, note);
+    public void noteBlockActivate(int ballIndex, Vec3 target, int note, int durationTicks) {
+        noteBlockSimulation.activate(ballIndex, target, note, durationTicks);
     }
 
     public void tick() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) {
             return;
         }
-        ClientWorld world = client.world;
+        ClientLevel world = client.level;
         if (world == null) {
             lastWorld = null;
             return;

@@ -1,14 +1,14 @@
 package org.miau.particleeffects.client.display;
 
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.NoteBlockParams;
 import org.miau.particleeffects.model.TextDisplayParams;
-import org.miau.particleeffects.protocol.MiauParticleEffectsPackets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 /**
  * 客户端显示门面：客户端收包入口将数据交给这里。Backend。 *
@@ -29,11 +29,11 @@ public final class ClientDisplayManager {
 
         void clear(ClearScope scope, String id);
 
-        void noteBlockStart(NoteBlockParams params);
+        void noteBlockStart(NoteBlockParams params, List<Vec3> anchors);
 
         void noteBlockStop();
 
-        void noteBlockActivate(int ballIndex, Vec3d target, int note);
+        void noteBlockActivate(int ballIndex, Vec3 target, int note, int durationTicks);
     }
 
     public static void setBackend(Backend newBackend) {
@@ -52,22 +52,16 @@ public final class ClientDisplayManager {
         backend.clear(scope, id);
     }
 
-    public static void noteBlockStart(NoteBlockParams params) {
-        backend.noteBlockStart(params);
+    public static void noteBlockStart(NoteBlockParams params, List<Vec3> anchors) {
+        backend.noteBlockStart(params, anchors);
     }
 
     public static void noteBlockStop() {
         backend.noteBlockStop();
     }
 
-    public static void noteBlockActivate(int ballIndex, Vec3d target, int note) {
-        backend.noteBlockActivate(ballIndex, target, note);
-    }
-
-    /**
-     * 弹力球落地：由显示后端在客户端完成落地判定后调用，上报服务端以触发下一波分配。     */
-    public static void reportBallLanded(int ballIndex) {
-        ClientPlayNetworking.send(new MiauParticleEffectsPackets.BallLandedC2SPayload(ballIndex));
+    public static void noteBlockActivate(int ballIndex, Vec3 target, int note, int durationTicks) {
+        backend.noteBlockActivate(ballIndex, target, note, durationTicks);
     }
 
     private static final class NoopBackend implements Backend {
@@ -89,8 +83,8 @@ public final class ClientDisplayManager {
         }
 
         @Override
-        public void noteBlockStart(NoteBlockParams params) {
-            LOGGER.debug("[MiauParticleEffects] noteblock start {}", params);
+        public void noteBlockStart(NoteBlockParams params, List<Vec3> anchors) {
+            LOGGER.debug("[MiauParticleEffects] noteblock start {} ({} tracks)", params, anchors.size());
         }
 
         @Override
@@ -99,8 +93,9 @@ public final class ClientDisplayManager {
         }
 
         @Override
-        public void noteBlockActivate(int ballIndex, Vec3d target, int note) {
-            LOGGER.debug("[MiauParticleEffects] ball #{} -> {} (note {})", ballIndex, target, note);
+        public void noteBlockActivate(int ballIndex, Vec3 target, int note, int durationTicks) {
+            LOGGER.debug("[MiauParticleEffects] ball #{} -> {} (note {}) lead={}",
+                    ballIndex, target, note, durationTicks);
         }
     }
 }

@@ -1,7 +1,7 @@
 package org.miau.particleeffects.protocol;
 
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.Easing;
 import org.miau.particleeffects.animation.Easings;
@@ -23,23 +23,23 @@ public final class PayloadCodecs {
     private PayloadCodecs() {
     }
 
-    static final PacketCodec<PacketByteBuf, Orientation> ORIENTATION = new PacketCodec<>() {
+    static final StreamCodec<FriendlyByteBuf, Orientation> ORIENTATION = new StreamCodec<>() {
         @Override
-        public Orientation decode(PacketByteBuf buf) {
+        public Orientation decode(FriendlyByteBuf buf) {
             return new Orientation(buf.readFloat(), buf.readFloat(), buf.readFloat());
         }
 
         @Override
-        public void encode(PacketByteBuf buf, Orientation value) {
+        public void encode(FriendlyByteBuf buf, Orientation value) {
             buf.writeFloat(value.yaw());
             buf.writeFloat(value.pitch());
             buf.writeFloat(value.roll());
         }
     };
 
-    static final PacketCodec<PacketByteBuf, AnimationSet> ANIMATION_SET = new PacketCodec<>() {
+    static final StreamCodec<FriendlyByteBuf, AnimationSet> ANIMATION_SET = new StreamCodec<>() {
         @Override
-        public AnimationSet decode(PacketByteBuf buf) {
+        public AnimationSet decode(FriendlyByteBuf buf) {
             int count = buf.readVarInt();
             if (count <= 0) {
                 return AnimationSet.EMPTY;
@@ -47,7 +47,7 @@ public final class PayloadCodecs {
             List<org.miau.particleeffects.animation.AnimationToken> tokens = new ArrayList<>();
             for (int i = 0; i < count; i++) {
                 try {
-                    tokens.add(org.miau.particleeffects.animation.AnimationToken.parse(buf.readString(64)));
+                    tokens.add(org.miau.particleeffects.animation.AnimationToken.parse(buf.readUtf(64)));
                 } catch (RuntimeException e) {
                     return AnimationSet.EMPTY;
                 }
@@ -60,22 +60,22 @@ public final class PayloadCodecs {
         }
 
         @Override
-        public void encode(PacketByteBuf buf, AnimationSet value) {
+        public void encode(FriendlyByteBuf buf, AnimationSet value) {
             List<org.miau.particleeffects.animation.AnimationToken> tokens = value.tokens();
             buf.writeVarInt(tokens.size());
             for (org.miau.particleeffects.animation.AnimationToken token : tokens) {
-                buf.writeString(token.toString());
+                buf.writeUtf(token.toString());
             }
         }
     };
 
-    static final PacketCodec<PacketByteBuf, MoveSpec> MOVE = new PacketCodec<>() {
+    static final StreamCodec<FriendlyByteBuf, MoveSpec> MOVE = new StreamCodec<>() {
         @Override
-        public MoveSpec decode(PacketByteBuf buf) {
+        public MoveSpec decode(FriendlyByteBuf buf) {
             DoubleWrapper d = new DoubleWrapper(
                     buf.readDouble(), buf.readDouble(), buf.readDouble());
             int ticks = buf.readVarInt();
-            Easing curve = Easings.byName(buf.readString(64));
+            Easing curve = Easings.byName(buf.readUtf(64));
             if (curve == null) {
                 curve = Easings.EASE_OUT;
             }
@@ -83,23 +83,23 @@ public final class PayloadCodecs {
         }
 
         @Override
-        public void encode(PacketByteBuf buf, MoveSpec value) {
+        public void encode(FriendlyByteBuf buf, MoveSpec value) {
             buf.writeDouble(value.delta().x);
             buf.writeDouble(value.delta().y);
             buf.writeDouble(value.delta().z);
             buf.writeVarInt(value.durationTicks());
-            buf.writeString(Easings.nameOf(value.curve()));
+            buf.writeUtf(Easings.nameOf(value.curve()));
         }
     };
 
-    static final PacketCodec<PacketByteBuf, TextDisplayParams> TEXT = new PacketCodec<>() {
+    static final StreamCodec<FriendlyByteBuf, TextDisplayParams> TEXT = new StreamCodec<>() {
         @Override
-        public TextDisplayParams decode(PacketByteBuf buf) {
-            String text = buf.readString(4096);
+        public TextDisplayParams decode(FriendlyByteBuf buf) {
+            String text = buf.readUtf(4096);
             DoubleWrapper p = new DoubleWrapper(buf.readDouble(), buf.readDouble(), buf.readDouble());
             float scale = buf.readFloat();
             int color = buf.readInt();
-            ColorMode colorMode = ColorMode.parse(buf.readString(32));
+            ColorMode colorMode = ColorMode.parse(buf.readUtf(32));
             if (colorMode == null) {
                 colorMode = ColorMode.SOLID;
             }
@@ -113,23 +113,23 @@ public final class PayloadCodecs {
             int enter = buf.readVarInt();
             int exit = buf.readVarInt();
             int delay = buf.readVarInt();
-            Easing curve = Easings.byName(buf.readString(64));
+            Easing curve = Easings.byName(buf.readUtf(64));
             if (curve == null) {
                 curve = Easings.EASE_OUT;
             }
             AnimationSet entry = ANIMATION_SET.decode(buf);
             AnimationSet exitSet = ANIMATION_SET.decode(buf);
-            FadeOption fade = FadeOption.parse(buf.readString(16));
+            FadeOption fade = FadeOption.parse(buf.readUtf(16));
             if (fade == null) {
                 fade = FadeOption.NONE;
             }
             float spread = buf.readFloat();
             double density = buf.readDouble();
             MoveSpec move = buf.readBoolean() ? MOVE.decode(buf) : null;
-            String id = buf.readBoolean() ? buf.readString(128) : null;
+            String id = buf.readBoolean() ? buf.readUtf(128) : null;
             try {
                 return new TextDisplayParams(
-                        text, new net.minecraft.util.math.Vec3d(p.x, p.y, p.z), scale, color,
+                        text, new net.minecraft.world.phys.Vec3(p.x, p.y, p.z), scale, color,
                         colorMode, gradientColors,
                         orientation, duration, enter, exit, delay,
                         curve, entry, exitSet, fade, spread, density, move, id, buf.readBoolean());
@@ -148,14 +148,14 @@ public final class PayloadCodecs {
         }
 
         @Override
-        public void encode(PacketByteBuf buf, TextDisplayParams value) {
-            buf.writeString(value.text());
+        public void encode(FriendlyByteBuf buf, TextDisplayParams value) {
+            buf.writeUtf(value.text());
             buf.writeDouble(value.pos().x);
             buf.writeDouble(value.pos().y);
             buf.writeDouble(value.pos().z);
             buf.writeFloat(value.scale());
             buf.writeInt(value.colorArgb());
-            buf.writeString(value.colorMode().id());
+            buf.writeUtf(value.colorMode().id());
             buf.writeVarInt(value.gradientColors().size());
             for (int c : value.gradientColors()) {
                 buf.writeInt(c);
@@ -165,10 +165,10 @@ public final class PayloadCodecs {
             buf.writeVarInt(value.enterTicks());
             buf.writeVarInt(value.exitTicks());
             buf.writeVarInt(value.delayTicks());
-            buf.writeString(Easings.nameOf(value.curve()));
+            buf.writeUtf(Easings.nameOf(value.curve()));
             ANIMATION_SET.encode(buf, value.entry());
             ANIMATION_SET.encode(buf, value.exit());
-            buf.writeString(value.fade().id());
+            buf.writeUtf(value.fade().id());
             buf.writeFloat(value.spread());
             buf.writeDouble(value.density());
             buf.writeBoolean(value.move() != null);
@@ -177,21 +177,21 @@ public final class PayloadCodecs {
             }
             buf.writeBoolean(value.id() != null);
             if (value.id() != null) {
-                buf.writeString(value.id());
+                buf.writeUtf(value.id());
             }
             buf.writeBoolean(value.force());
         }
     };
 
-    static final PacketCodec<PacketByteBuf, EffectDisplayParams> EFFECT = new PacketCodec<>() {
+    static final StreamCodec<FriendlyByteBuf, EffectDisplayParams> EFFECT = new StreamCodec<>() {
         @Override
-        public EffectDisplayParams decode(PacketByteBuf buf) {
-            EffectType type = EffectType.parse(buf.readString(32));
+        public EffectDisplayParams decode(FriendlyByteBuf buf) {
+            EffectType type = EffectType.parse(buf.readUtf(32));
             DoubleWrapper p = new DoubleWrapper(buf.readDouble(), buf.readDouble(), buf.readDouble());
             float size = buf.readFloat();
             float waveSpeed = buf.readFloat();
             int color = buf.readInt();
-            ColorMode colorMode = ColorMode.parse(buf.readString(32));
+            ColorMode colorMode = ColorMode.parse(buf.readUtf(32));
             if (colorMode == null) {
                 colorMode = ColorMode.SOLID;
             }
@@ -216,24 +216,24 @@ public final class PayloadCodecs {
             int enter = buf.readVarInt();
             int exit = buf.readVarInt();
             int delay = buf.readVarInt();
-            Easing curve = Easings.byName(buf.readString(64));
+            Easing curve = Easings.byName(buf.readUtf(64));
             if (curve == null) {
                 curve = Easings.EASE_OUT;
             }
             AnimationSet entry = ANIMATION_SET.decode(buf);
             AnimationSet exitSet = ANIMATION_SET.decode(buf);
-            FadeOption fade = FadeOption.parse(buf.readString(16));
+            FadeOption fade = FadeOption.parse(buf.readUtf(16));
             if (fade == null) {
                 fade = FadeOption.NONE;
             }
             MoveSpec move = buf.readBoolean() ? MOVE.decode(buf) : null;
-            String id = buf.readBoolean() ? buf.readString(128) : null;
+            String id = buf.readBoolean() ? buf.readUtf(128) : null;
             if (type == null) {
                 type = EffectType.CUBE;
             }
             try {
                 return new EffectDisplayParams(
-                        type, new net.minecraft.util.math.Vec3d(p.x, p.y, p.z), size, waveSpeed, color,
+                        type, new net.minecraft.world.phys.Vec3(p.x, p.y, p.z), size, waveSpeed, color,
                         colorMode, gradientColors,
                         orientation, rotation, duration, enter, exit, delay,
                         curve, entry, exitSet, fade, move, id, buf.readBoolean());
@@ -248,15 +248,15 @@ public final class PayloadCodecs {
         }
 
         @Override
-        public void encode(PacketByteBuf buf, EffectDisplayParams value) {
-            buf.writeString(value.type().id());
+        public void encode(FriendlyByteBuf buf, EffectDisplayParams value) {
+            buf.writeUtf(value.type().id());
             buf.writeDouble(value.pos().x);
             buf.writeDouble(value.pos().y);
             buf.writeDouble(value.pos().z);
             buf.writeFloat(value.size());
             buf.writeFloat(value.waveSpeed());
             buf.writeInt(value.colorArgb());
-            buf.writeString(value.colorMode().id());
+            buf.writeUtf(value.colorMode().id());
             buf.writeVarInt(value.gradientColors().size());
             for (int c : value.gradientColors()) {
                 buf.writeInt(c);
@@ -273,17 +273,17 @@ public final class PayloadCodecs {
             buf.writeVarInt(value.enterTicks());
             buf.writeVarInt(value.exitTicks());
             buf.writeVarInt(value.delayTicks());
-            buf.writeString(Easings.nameOf(value.curve()));
+            buf.writeUtf(Easings.nameOf(value.curve()));
             ANIMATION_SET.encode(buf, value.entry());
             ANIMATION_SET.encode(buf, value.exit());
-            buf.writeString(value.fade().id());
+            buf.writeUtf(value.fade().id());
             buf.writeBoolean(value.move() != null);
             if (value.move() != null) {
                 MOVE.encode(buf, value.move());
             }
             buf.writeBoolean(value.id() != null);
             if (value.id() != null) {
-                buf.writeString(value.id());
+                buf.writeUtf(value.id());
             }
             buf.writeBoolean(value.force());
         }
@@ -300,8 +300,8 @@ public final class PayloadCodecs {
             this.z = z;
         }
 
-        net.minecraft.util.math.Vec3d asVec3d() {
-            return new net.minecraft.util.math.Vec3d(x, y, z);
+        net.minecraft.world.phys.Vec3 asVec3d() {
+            return new net.minecraft.world.phys.Vec3(x, y, z);
         }
     }
 }

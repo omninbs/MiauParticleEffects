@@ -1,9 +1,9 @@
 package org.miau.particleeffects.model;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 public record NoteBlockParams(
-        Vec3d center,
+        Vec3 center,
         float radius,
         int trailCount,
         HorizontalCurve curve,
@@ -30,11 +30,16 @@ public record NoteBlockParams(
         if (curve == null) {
             throw new IllegalArgumentException("水平运动曲线不能为空");
         }
-        if (ballCount < 1 || ballCount > 8) {
-            throw new IllegalArgumentException("弹力球数量必须在 1~8 之间");
+        if (ballCount < 1 || ballCount > 32) {
+            throw new IllegalArgumentException("弹力球数量必须在 1~32 之间");
         }
         if (maxJumpHeight <= 0 || maxJumpHeight > 64) {
             throw new IllegalArgumentException("跳动最大高度必须大于 0 且不超过 64");
         }
+    }
+
+    /** 弹力球数量 = 已选轨道数，由服务端在轨道识别完成后覆盖。 */
+    public NoteBlockParams withBallCount(int newBallCount) {
+        return new NoteBlockParams(center, radius, trailCount, curve, newBallCount, maxJumpHeight, force);
     }
 }

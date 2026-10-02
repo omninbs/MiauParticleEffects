@@ -31,10 +31,10 @@
 
 | 项目      | 版本 |
 |-----------|------|
-| Minecraft | **1.21.11** |
-| 装载器    | Fabric Loader **>= 0.16.0** |
-| API       | Fabric API（1.21.11 最新版） |
-| Java      | **21** |
+| Minecraft | **1.21.1 / 1.21.4 / 1.21.8 / 1.21.11 / 26.2**（多版本，一套源码） |
+| 装载器    | Fabric Loader **>=0.16.0** |
+| API       | Fabric API（对应 MC 版本最新版） |
+| Java      | **21**（1.21.x）/ **25**（26.x） |
 
 > 客户端与服务端均需安装本模组（专用服务器需安装以广播事件）。
 
@@ -66,11 +66,22 @@
 - **explosion** —— 向四面迸发的宇宙爆炸
 - **wave** —— 不断扩散的水波（速度可调）
 
-### 🎵 音符盒弹力球
+### 🎵 音符盒弹力球（按轨道）
+先在游戏里**手动框选轨道**，每条轨道对应一颗弹力球：
+
 ```text
-/mpe noteblock on [选项]
+/mpe noteblock select start [link=3]   # 进入选择模式
+# 左键点击每条链式轨道上的任意方块（不会真的破坏）
+/mpe noteblock select done             # 识别轨道
+/mpe noteblock on [选项]               # 开启
 ```
-检测半径内被激活的音符盒时，一颗**带淡出拖尾的弹力球彗星**会跳到它上表面中心。多个音符盒同帧激活 → 弹力球**均匀分布、不重复共跳**；只有单个音符 → 全部弹力球齐聚。
+
+- **轨道识别**：从点击的方块出发，在**同一 Y 层**内按水平间距 ≤ `link`（默认 3）连通扩散出整条轨道的音符盒；种子点可以落在中继器、红石线等非音符盒方块上（自动吸附 3 格内最近的音符盒）。
+- **不串轨**：因为限定同一 Y 层，上下叠放的轨道互不连通，不会把别的轨道连进来。
+- **一轨一球**：每个音符盒都属于某条轨道，被激活时驱动本轨道唯一的那颗**带淡出拖尾的弹力球彗星**跳到它上表面中心；同一轨道同 tick 多个音符 → 随机取一个。轨道之间互不干扰，球不会卡死或跑到别的轨道。
+- **数量上限**：最多选择 **32 条轨道**（= 最多 32 颗弹力球）。
+- **节奏同步**：服务端会学习每条轨道内的音符先后顺序，提前预判下一个音符盒并下发，让弹力球跟上歌曲速度。
+- 未选择轨道就执行 `on` 会提示先完成选择。
 
 ### 🎨 一种命令，四种颜色
 ```text
@@ -90,7 +101,8 @@ color=rainbow            整体颜色随时间循环（彩虹色）
 | `density <0.01~1>` | 全局像素采样间距（会持久保存） |
 | `text "<文字>" <x> <y> <z> [选项]` | 粒子显示文字 |
 | `effect <类型> <x> <y> <z> [选项]` | 发射粒子特效 |
-| `noteblock on\|off\|status\|set` | 开启 / 管理音符盒弹力球 |
+| `noteblock select start\|done\|clear\|status` | 选择音符盒轨道（左键点选，不真正破坏方块） |
+| `noteblock on\|off\|status\|set` | 开启 / 管理音符盒弹力球（球数 = 已选轨道数） |
 | `clear [all\|text\|effect\|id=<ID>]` | 清除显示内容 |
 | `autoclear <on\|off>` | 新文字显示前先让旧文字退场 |
 
@@ -104,7 +116,12 @@ gradient=#FF0000,#00FF00 gradient=rainbow color=rainbow
 
 ### 音符盒选项
 ```
-selector=@p radius=16 trail=24 curve=arc|sine|line count=1 height=3
+# 选择轨道
+select start link=3        # 轨道内相邻音符盒的最大水平间距（1~8）
+select done / select clear / select status
+
+# 开启（球数由已选轨道数决定，无需指定 count）
+selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
 ```
 
 ### 使用示例
@@ -114,7 +131,10 @@ selector=@p radius=16 trail=24 curve=arc|sine|line count=1 height=3
 /mpe effect cube 100 64 100 size=2 color=#00FFFF rotate=0,1,0,3
 /mpe effect explosion 100 64 100 size=6 gradient=#FF4500,#FFFFFF
 /mpe effect wave 100 64 100 size=5 speed=3 color=#00FF00
-/mpe noteblock on radius=32 trail=24 count=2 height=3
+/mpe noteblock select start link=3
+# 左键依次点击每条轨道上的方块后：
+/mpe noteblock select done
+/mpe noteblock on radius=32 trail=24 height=3
 ```
 
 ---
@@ -157,6 +177,29 @@ More details can be seen in the [showcase video on Bilibili](https://www.bilibil
 - [ ] 与[NoteBlockWeb编辑器](https://github.com/omninbs/NoteBlockWeb)联动。
 - [ ] 多语言/更多特效
 - [ ] 全自动化生成/自动识别红石音乐并且生成特效
+
+---
+
+## 🧩 多版本支持与构建
+
+本项目使用 [Stonecutter](https://stonecutter.kikugie.dev/) 实现**一套源码、多版本构建**，并通过 `loom-back-compat` 自动在混淆/非混淆 Loom 之间切换，使用 Mojang 官方映射（Mojang Mappings）编写。
+
+当前支持版本：`1.21.1`、`1.21.4`、`1.21.8`、`1.21.11`、`26.2`。
+
+```text
+# 一次构建全部版本（产物在 versions/<版本>/build/libs/）
+gradlew build
+
+# 只构建某个版本（先切换活动版本，再构建）
+gradlew "Set active project to 1.21.8"
+gradlew :1.21.8:build
+```
+
+- 各版本依赖坐标集中在 `stonecutter.properties.toml`。
+- 版本差异通过源码中的 Stonecutter 条件注释（`/*? if ... */`）与替换规则（`stonecutter.gradle.kts`）处理。
+- 提交前建议切回 26.2：`gradlew "Set active project to 26.2"`。
+
+> **构建环境要求：** Gradle 守护进程需运行在 **Java 25** 上（Loom 1.18 要求）。`gradle/gradle-daemon-jvm.properties` 已自动配置：无论你的 `JAVA_HOME` 是什么，Gradle 都会为守护进程选用（必要时通过 foojay 自动下载）Java 25；1.21.x 目标所需的 Java 21 工具链也会自动提供。
 
 ---
 

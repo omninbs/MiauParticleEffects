@@ -1,18 +1,25 @@
 package org.miau.particleeffects.client.noteblock;
 
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Vec3d;
-import org.miau.particleeffects.client.display.ClientDisplayManager;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
 import org.miau.particleeffects.model.HorizontalCurve;
 import org.miau.particleeffects.model.NoteBlockParams;
+import org.miau.particleeffects.util.WorldTime;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 
 /**
- * 音符盒弹力球客户端模拟：接收服务端分配的目标，计算抛物线（竖直，固定样式）
- * + 水平运动曲线（line/arc/sine）的独立控制轨迹。
+ * 音符盒弹力球客户端模拟：接收服务端分配的目标，水平直线飞向目标，
+ * 仅在 Y 轴做起伏（arc=抛物线 / sine=正弦 / line=不弹跳）。
+ *
+ * 轨道模型：一颗弹力球对应一条已选轨道（ballIndex == trackIndex），因此球永远不会串轨。
+ *
+ * 节奏同步：服务端会提前预测本轨“下一个被激活的音符盒”并附带提前量（提前 tick 数），
+ * 客户端据此把本次跳跃时长设为该提前量，使球正好在下一个音符盒发声时落到其上。
  *
  * 视觉（优化目标：显眼、区别明显、60fps 流畅）：
  *  - 拖尾：沿弹力球本 tick 走过的路径段按 0.35 方块间距密集撒星点，形成连续彗尾（不再断点）；
@@ -23,8 +30,7 @@ import java.util.List;
  *  - 空闲：在最近落点保留一小团柔和光晕，便于持续追踪弹力球位置。
  *  - 多球区分：每颗弹力球使用不同的高亮颜色，避免多球同跳/共落时不可分辨。
  *
- * 连击优化：落地前一 tick 即上报（预报告），服务端回发的下一次分配会先进本地待跳队列，
- * 落地瞬间立刻开始下一跳，消除两次跳跃之间的网络往返等待。
+ * 连击优化：服务端提前下发的下一跳先进本地待跳队列，落地瞬间立刻接上，消除两次跳跃之间的停顿。
  */
 public final class NoteBlockSimulation {
 
@@ -41,12 +47,15 @@ public final class NoteBlockSimulation {
         return enabled;
     }
 
-    public void start(NoteBlockParams newParams) {
+    public void start(NoteBlockParams newParams, List<Vec3> anchors) {
         this.params = newParams;
         this.enabled = true;
         this.balls.clear();
-        for (int i = 0; i < newParams.ballCount(); i++) {
-            balls.add(new Ball(i, newParams.center()));
+        // 一颗弹力球对应一条轨道，初始停在该轨道的锚点上（无锚点时退回中心）。
+        int count = !anchors.isEmpty() ? anchors.size() : newParams.ballCount();
+        for (int i = 0; i < count; i++) {
+            Vec3 home = i < anchors.size() ? anchors.get(i) : newParams.center();
+            balls.add(new Ball(i, home));
         }
     }
 
@@ -56,102 +65,117 @@ public final class NoteBlockSimulation {
         this.params = null;
     }
 
-    public void activate(int ballIndex, Vec3d target, int note) {
+    public void activate(int ballIndex, Vec3 target, int note, int durationTicks) {
         if (!enabled || params == null || ballIndex < 0 || ballIndex >= balls.size()) {
             return;
         }
-        balls.get(ballIndex).queueJump(target, params.maxJumpHeight(), params.curve());
+        balls.get(ballIndex).queueJump(target, params.maxJumpHeight(), params.curve(), durationTicks);
     }
 
-    public void tick(ClientWorld world) {
+    public void tick(ClientLevel world) {
         if (!enabled || params == null) {
             return;
         }
-        List<Ball> landed = new ArrayList<>();
         int trail = params.trailCount();
         boolean force = params.force();
         for (Ball ball : balls) {
             ball.tick(world, trail, force);
-            if (ball.consumeLandedFlag()) {
-                landed.add(ball);
-            }
-        }
-        for (Ball ball : landed) {
-            ClientDisplayManager.reportBallLanded(ball.index);
         }
     }
 
     private static final class Ball {
 
-        /** 多球区分用的高亮色板（各球取不同颜色，亮色 + 叠加混合，短距离内即可分辨）。 */
-        private static final int[] PALETTE = {
-                0xFFF2E0, // 暖白（单球默认，最“彗星”）
-                0xFFD77A, // 琥珀
-                0x7ADEFF, // 天蓝
-                0xFF9AE0, // 粉红
-                0x9AFF8A, // 薄荷
-                0xB69AFF, // 紫罗兰
-                0xFFFF9A, // 柠檬
-                0x66FFE6  // 青玉
-        };
+        /** 单次跳跃的 tick 上限，防止长距离跳跃拖得过久。 */
+        private static final int MAX_JUMP_TICKS = 60;
+        /** 无预测时（歌曲第一遍）的兜底跳跃时长下限，尽量快速追上后续音符。 */
+        private static final int MIN_FALLBACK_TICKS = 3;
 
         final int index;
         final int color;
-        Vec3d pos;
+        Vec3 pos;
         boolean idle = true;
-        private Vec3d lastPos;
-        private Vec3d start;
-        private Vec3d target;
-        private Vec3d restPos;
+        private Vec3 lastPos;
+        private Vec3 start;
+        private Vec3 target;
+        private Vec3 restPos;
         private int jumpTicks;
         private int jumpElapsed;
         private float height = 3f;
         private HorizontalCurve curve = HorizontalCurve.ARC;
-        private boolean landedFlag;
-        private boolean jumpReported;
-        private Vec3d pendingTarget;
-        private float pendingHeight;
-        private HorizontalCurve pendingCurve;
+        private static final int MAX_PENDING_JUMPS = 8;
+        private final Deque<PendingJump> pendingJumps = new ArrayDeque<>();
 
-        Ball(int index, Vec3d initialPos) {
+        private record PendingJump(Vec3 target, float height, HorizontalCurve curve, int duration) {
+        }
+
+        Ball(int index, Vec3 initialPos) {
             this.index = index;
-            this.color = PALETTE[index % PALETTE.length];
+            this.color = colorOf(index);
             this.pos = initialPos;
             this.lastPos = initialPos;
             this.restPos = initialPos;
         }
 
-        void queueJump(Vec3d newTarget, float maxHeight, HorizontalCurve curve) {
-            if (idle) {
-                beginJump(newTarget, maxHeight, curve);
-            } else {
-                this.pendingTarget = newTarget;
-                this.pendingHeight = maxHeight;
-                this.pendingCurve = curve;
+        /** 按黄金比例散开色相，让最多 32 颗弹力球颜色都尽量可分辨。 */
+        private static int colorOf(int index) {
+            float hue = (float) ((index * 0.61803398875) % 1.0);
+            float sat = 0.45f;
+            float val = 1.0f;
+            int sector = (int) (hue * 6f);
+            float f = hue * 6f - sector;
+            float p = val * (1f - sat);
+            float q = val * (1f - sat * f);
+            float t = val * (1f - sat * (1f - f));
+            float r;
+            float g;
+            float b;
+            switch (sector % 6) {
+                case 0 -> { r = val; g = t; b = p; }
+                case 1 -> { r = q; g = val; b = p; }
+                case 2 -> { r = p; g = val; b = t; }
+                case 3 -> { r = p; g = q; b = val; }
+                case 4 -> { r = t; g = p; b = val; }
+                default -> { r = val; g = p; b = q; }
             }
+            return ((int) (r * 255f) << 16) | ((int) (g * 255f) << 8) | (int) (b * 255f);
         }
 
-        void beginJump(Vec3d newTarget, float maxHeight, HorizontalCurve curve) {
+        void queueJump(Vec3 newTarget, float maxHeight, HorizontalCurve curve, int durationTicks) {
+            if (idle) {
+                beginJump(newTarget, maxHeight, curve, durationTicks);
+                return;
+            }
+            if (!pendingJumps.isEmpty()) {
+                PendingJump last = pendingJumps.peekLast();
+                if (last.target().equals(newTarget)) {
+                    pendingJumps.pollLast();
+                }
+            }
+            while (pendingJumps.size() >= MAX_PENDING_JUMPS) {
+                pendingJumps.pollFirst();
+            }
+            pendingJumps.addLast(new PendingJump(newTarget, maxHeight, curve, durationTicks));
+        }
+
+        void beginJump(Vec3 newTarget, float maxHeight, HorizontalCurve curve, int durationTicks) {
             this.start = this.pos;
             this.target = newTarget;
             this.curve = curve;
             this.height = maxHeight;
-            double dist = Math.hypot(target.x - start.x, target.z - start.z);
-            int ticks = (int) Math.ceil(dist / 2.0);
-            this.jumpTicks = Math.max(5, Math.min(40, ticks));
+            if (durationTicks > 0) {
+                // 服务端预测的提前量：用“到下一音符盒激活还剩多少 tick”作为跳跃时长，
+                // 让球正好在下一个音符盒发声时落上去，跟上歌曲节奏。
+                this.jumpTicks = Math.max(2, Math.min(MAX_JUMP_TICKS, durationTicks));
+            } else {
+                double dist = Math.hypot(target.x - start.x, target.z - start.z);
+                int ticks = (int) Math.ceil(dist / 2.0);
+                this.jumpTicks = Math.max(MIN_FALLBACK_TICKS, Math.min(MAX_JUMP_TICKS, ticks));
+            }
             this.jumpElapsed = 0;
             this.idle = false;
-            this.landedFlag = false;
-            this.jumpReported = false;
         }
 
-        boolean consumeLandedFlag() {
-            boolean was = landedFlag;
-            landedFlag = false;
-            return was;
-        }
-
-        void tick(ClientWorld world, int trailCount, boolean force) {
+        void tick(ClientLevel world, int trailCount, boolean force) {
             if (idle) {
                 spawnRestGlow(world, force);
                 return;
@@ -165,25 +189,14 @@ public final class NoteBlockSimulation {
                 pos = target;
                 idle = true;
                 restPos = target;
-                boolean needReport = !jumpReported;
-                if (pendingTarget != null) {
-                    Vec3d nt = pendingTarget;
-                    float nh = pendingHeight;
-                    HorizontalCurve nc = pendingCurve;
-                    pendingTarget = null;
-                    beginJump(nt, nh, nc);
+                if (!pendingJumps.isEmpty()) {
+                    PendingJump next = pendingJumps.pollFirst();
+                    beginJump(next.target(), next.height(), next.curve(), next.duration());
                 }
-                if (needReport) {
-                    landedFlag = true;
-                }
-            } else if (!jumpReported && jumpElapsed >= jumpTicks - 1) {
-                // 落地前一 tick 提前上报，让服务端分配的回包与落地重合，实现无缝连跳。
-                jumpReported = true;
-                landedFlag = true;
             }
         }
 
-        private void spawnParticles(ClientWorld world, int trailCount, boolean force) {
+        private void spawnParticles(ClientLevel world, int trailCount, boolean force) {
             int age = Math.max(4, Math.min(256, trailCount));
             double dx = pos.x - lastPos.x;
             double dy = pos.y - lastPos.y;
@@ -195,9 +208,9 @@ public final class NoteBlockSimulation {
                 int n = Math.max(1, (int) Math.min(MAX_TRAIL_PER_SEGMENT, Math.ceil(segLen / TRAIL_SPACING)));
                 for (int i = 1; i <= n; i++) {
                     double t = (double) i / (n + 1);
-                    double px = lastPos.x + dx * t + (world.random.nextFloat() - 0.5f) * 0.10;
-                    double py = lastPos.y + dy * t + (world.random.nextFloat() - 0.5f) * 0.10;
-                    double pz = lastPos.z + dz * t + (world.random.nextFloat() - 0.5f) * 0.10;
+                    double px = lastPos.x + dx * t + (world.getRandom().nextFloat() - 0.5f) * 0.10;
+                    double py = lastPos.y + dy * t + (world.getRandom().nextFloat() - 0.5f) * 0.10;
+                    double pz = lastPos.z + dz * t + (world.getRandom().nextFloat() - 0.5f) * 0.10;
                     ColoredEndRodParticle.spawnMoving(world, px, py, pz, 0, 0, 0, color, 0.9f, age, force);
                 }
             }
@@ -211,53 +224,40 @@ public final class NoteBlockSimulation {
             ColoredEndRodParticle.spawnMoving(world, pos.x, pos.y, pos.z, dx, dy, dz, color, 1.0f, 3, force);
         }
 
-        private void spawnRestGlow(ClientWorld world, boolean force) {
+        private void spawnRestGlow(ClientLevel world, boolean force) {
             if (restPos == null) {
                 return;
             }
             // 隔帧撒 2 个细小静置光点，成本极低，空闲时也能看见球的位置。
-            if (((world.getTime() + index) & 1L) != 0L) {
+            if (((WorldTime.ticks(world) + index) & 1L) != 0L) {
                 return;
             }
             for (int k = 0; k < 2; k++) {
-                double ox = (world.random.nextFloat() - 0.5f) * 0.6;
-                double oz = (world.random.nextFloat() - 0.5f) * 0.6;
-                double oy = world.random.nextFloat() * 0.3;
+                double ox = (world.getRandom().nextFloat() - 0.5f) * 0.6;
+                double oz = (world.getRandom().nextFloat() - 0.5f) * 0.6;
+                double oy = world.getRandom().nextFloat() * 0.3;
                 ColoredEndRodParticle.spawnStatic(world,
                         restPos.x + ox, restPos.y + oy, restPos.z + oz,
                         color, 0.5f, 10, force);
             }
         }
 
-        private Vec3d computePosition(float t) {
-            double baseX = lerp(start.x, target.x, t);
-            double baseZ = lerp(start.z, target.z, t);
+        private Vec3 computePosition(float t) {
+            // 水平方向：直接直线插值到目标，不再有“固定偏向一侧”的横向弧线。
+            double x = lerp(start.x, target.x, t);
+            double z = lerp(start.z, target.z, t);
+            double yBase = lerp(start.y, target.y, t);
 
-            double dx = target.x - start.x;
-            double dz = target.z - start.z;
-            double len = Math.hypot(dx, dz);
-            if (len > 1e-4 && curve != HorizontalCurve.LINE) {
-                double nx = -dz / len;
-                double nz = dx / len;
-                double amp = Math.max(1.0, Math.min(6.0, len * 0.5));
-                double offset;
-                if (curve == HorizontalCurve.ARC) {
-                    offset = amp * (1.0 - Math.cos(2 * Math.PI * t)) / 2.0;
-                } else {
-                    offset = amp * Math.sin(2 * Math.PI * t);
-                }
-                baseX += nx * offset;
-                baseZ += nz * offset;
+            // 竖直方向：唯一做起伏的轴。arc = 抛物线（默认），sine = 正弦，line = 不弹跳。
+            double y = switch (curve) {
+                case LINE -> yBase;
+                case ARC -> yBase + 4.0 * height * t * (1.0 - t);
+                case SINE -> yBase + height * Math.sin(Math.PI * t);
+            };
+            if (y < Math.min(start.y, target.y)) {
+                y = Math.min(start.y, target.y);
             }
-
-            double y0 = start.y;
-            double y1 = target.y;
-            // 抛物线最高点 = 配置的最大跳动高度，竖直为固定样式。
-            double y = lerp(y0, y1, t) + 4.0 * height * t * (1.0 - t);
-            if (y < Math.min(y0, y1)) {
-                y = Math.min(y0, y1);
-            }
-            return new Vec3d(baseX, y, baseZ);
+            return new Vec3(x, y, z);
         }
     }
 

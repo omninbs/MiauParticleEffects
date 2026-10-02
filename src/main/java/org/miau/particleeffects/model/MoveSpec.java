@@ -1,10 +1,10 @@
 package org.miau.particleeffects.model;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.animation.Easing;
 import org.miau.particleeffects.animation.Easings;
 
-public record MoveSpec(Vec3d delta, int durationTicks, Easing curve) {
+public record MoveSpec(Vec3 delta, int durationTicks, Easing curve) {
 
     public MoveSpec {
         if (delta == null) {

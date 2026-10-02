@@ -1,7 +1,7 @@
 package org.miau.particleeffects.client.display;
 
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.miau.particleeffects.animation.AnimationSet;
@@ -12,6 +12,7 @@ import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.ColorMode;
 import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.RotationSpec;
+import org.miau.particleeffects.util.WorldTime;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,13 +28,13 @@ public final class EffectInstance extends DisplayInstance {
     private static final int MAX_EDGE_POINTS = 2000;
 
     private final EffectDisplayParams params;
-    private final List<Vec3d> basePoints;
+    private final List<Vec3> basePoints;
     private final List<Vector3f> explosionDirs;
     private final float[] explosionSpeeds;
     private final float minLocalX;
     private final float maxLocalX;
     private final float hueOffset;
-    private Vec3d lastOrigin = null;
+    private Vec3 lastOrigin = null;
     private boolean explosionSpawned = false;
 
     public EffectInstance(EffectDisplayParams params) {
@@ -49,7 +50,7 @@ public final class EffectInstance extends DisplayInstance {
         }
         float lo = Float.POSITIVE_INFINITY;
         float hi = Float.NEGATIVE_INFINITY;
-        for (Vec3d p : basePoints) {
+        for (Vec3 p : basePoints) {
             if ((float) p.x < lo) {
                 lo = (float) p.x;
             }
@@ -72,47 +73,47 @@ public final class EffectInstance extends DisplayInstance {
         this.hueOffset = (float) Math.random();
     }
 
-    private static List<Vec3d> buildCube(float size) {
+    private static List<Vec3> buildCube(float size) {
         float h = size / 2f;
-        Vec3d[] corners = {
-                new Vec3d(-h, -h, -h), new Vec3d(h, -h, -h),
-                new Vec3d(h, -h, h), new Vec3d(-h, -h, h),
-                new Vec3d(-h, h, -h), new Vec3d(h, h, -h),
-                new Vec3d(h, h, h), new Vec3d(-h, h, h)
+        Vec3[] corners = {
+                new Vec3(-h, -h, -h), new Vec3(h, -h, -h),
+                new Vec3(h, -h, h), new Vec3(-h, -h, h),
+                new Vec3(-h, h, -h), new Vec3(h, h, -h),
+                new Vec3(h, h, h), new Vec3(-h, h, h)
         };
         int[][] edges = {
                 {0, 1}, {1, 2}, {2, 3}, {3, 0},
                 {4, 5}, {5, 6}, {6, 7}, {7, 4},
                 {0, 4}, {1, 5}, {2, 6}, {3, 7}
         };
-        List<Vec3d> points = new ArrayList<>();
+        List<Vec3> points = new ArrayList<>();
         for (int[] edge : edges) {
             sampleEdge(corners[edge[0]], corners[edge[1]], 0.15, points);
         }
         return points;
     }
 
-    private static List<Vec3d> buildTetra(float size) {
+    private static List<Vec3> buildTetra(float size) {
         float edgeLength = (float) (2.0 * Math.sqrt(2.0));
         float s = size / edgeLength;
-        Vec3d[] vertices = {
-                new Vec3d(s, s, s),
-                new Vec3d(s, -s, -s),
-                new Vec3d(-s, s, -s),
-                new Vec3d(-s, -s, s)
+        Vec3[] vertices = {
+                new Vec3(s, s, s),
+                new Vec3(s, -s, -s),
+                new Vec3(-s, s, -s),
+                new Vec3(-s, -s, s)
         };
         int[][] edges = {
                 {0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 3}, {2, 3}
         };
-        List<Vec3d> points = new ArrayList<>();
+        List<Vec3> points = new ArrayList<>();
         for (int[] edge : edges) {
             sampleEdge(vertices[edge[0]], vertices[edge[1]], 0.15, points);
         }
         return points;
     }
 
-    private static void sampleEdge(Vec3d a, Vec3d b, double spacing, List<Vec3d> out) {
-        Vec3d delta = b.subtract(a);
+    private static void sampleEdge(Vec3 a, Vec3 b, double spacing, List<Vec3> out) {
+        Vec3 delta = b.subtract(a);
         double len = delta.length();
         int count = (int) Math.ceil(len / spacing);
         if (count < 1) {
@@ -126,7 +127,7 @@ public final class EffectInstance extends DisplayInstance {
         }
         for (int i = 0; i < count; i++) {
             double t = (i + 0.5) / count;
-            out.add(a.add(delta.multiply(t)));
+            out.add(a.add(delta.scale(t)));
         }
     }
 
@@ -141,13 +142,13 @@ public final class EffectInstance extends DisplayInstance {
     }
 
     @Override
-    public void spawnParticles(ClientWorld world) {
+    public void spawnParticles(ClientLevel world) {
         if (phase == Phase.DELETED || phase == Phase.PENDING) {
             return;
         }
         float progress = easedProgress();
         float fadeAlpha = computeFadeAlpha();
-        Vec3d moveOffset = computeMoveOffset(tickCounter, 0f);
+        Vec3 moveOffset = computeMoveOffset(tickCounter, 0f);
 
         AnimationSet activeAnim = phase == Phase.ENTER ? entryAnim
                 : phase == Phase.EXIT ? exitAnim
@@ -161,8 +162,8 @@ public final class EffectInstance extends DisplayInstance {
             }
         }
 
-        Vec3d origin = pos.add(moveOffset);
-        Vec3d originDelta = Vec3d.ZERO;
+        Vec3 origin = pos.add(moveOffset);
+        Vec3 originDelta = Vec3.ZERO;
         if (lastOrigin != null) {
             originDelta = origin.subtract(lastOrigin);
         }
@@ -177,11 +178,11 @@ public final class EffectInstance extends DisplayInstance {
 
     // ------------------------------------------------------------------ color modes
 
-    private int resolveColor(ClientWorld world, float gradientT) {
+    private int resolveColor(ClientLevel world, float gradientT) {
         return switch (params.colorMode()) {
             case GRADIENT -> ColorCodec.sampleGradient(params.gradientColors(), gradientT);
             case RAINBOW_GRADIENT -> ColorCodec.hsvToRgb(
-                    gradientT + ColorCodec.rainbowPhase(world.getTime()));
+                    gradientT + ColorCodec.rainbowPhase(WorldTime.ticks(world)));
             default -> params.colorArgb() & 0xFFFFFF;
         };
     }
@@ -190,7 +191,7 @@ public final class EffectInstance extends DisplayInstance {
         return params.colorMode() == ColorMode.RAINBOW_COLOR;
     }
 
-    private void spawnParticle(ClientWorld world, double x, double y, double z,
+    private void spawnParticle(ClientLevel world, double x, double y, double z,
                                double vx, double vy, double vz, float gradientT, float scale, int maxAge) {
         if (isRainbowColor()) {
             ColoredEndRodParticle.spawnRainbow(world, x, y, z, vx, vy, vz, scale, maxAge, hueOffset, false,
@@ -215,15 +216,15 @@ public final class EffectInstance extends DisplayInstance {
 
     // ------------------------------------------------------------------ wireframe
 
-    private void spawnWireframe(ClientWorld world, Vec3d origin, Vec3d originDelta,
+    private void spawnWireframe(ClientLevel world, Vec3 origin, Vec3 originDelta,
                                 float scaleFactor, float fadeAlpha) {
         if (fadeAlpha < 0.05f) {
             return;
         }
         Quaternionf rotation = computeOrientation().mul(computeSpin(0f), new Quaternionf());
-        for (Vec3d p : basePoints) {
+        for (Vec3 p : basePoints) {
             Vector3f v = new Vector3f((float) p.x, (float) p.y, (float) p.z).rotate(rotation);
-            Vec3d worldPos = origin.add(
+            Vec3 worldPos = origin.add(
                     v.x * scaleFactor,
                     v.y * scaleFactor,
                     v.z * scaleFactor);
@@ -235,7 +236,7 @@ public final class EffectInstance extends DisplayInstance {
 
     // ------------------------------------------------------------------ explosion
 
-    private void spawnExplosion(ClientWorld world, Vec3d origin) {
+    private void spawnExplosion(ClientLevel world, Vec3 origin) {
         // 一次性迸发：在进入显示期（入场动画结束后）触发，粒子飞行距离恰好等于
         // 目标半径（速度补偿粒子自身的阻力衰减），生命覆盖显示期 + 出场期。
         if (phase != Phase.DISPLAY || explosionSpawned) {
@@ -259,7 +260,7 @@ public final class EffectInstance extends DisplayInstance {
 
     // ------------------------------------------------------------------ wave
 
-    private void spawnWave(ClientWorld world, Vec3d origin, Vec3d originDelta,
+    private void spawnWave(ClientLevel world, Vec3 origin, Vec3 originDelta,
                            float scaleFactor, float fadeAlpha) {
         if (fadeAlpha < 0.05f) {
             return;
@@ -288,7 +289,7 @@ public final class EffectInstance extends DisplayInstance {
             float sin = (float) Math.sin(angle);
             Vector3f local = new Vector3f(cos * radius, 0f, sin * radius);
             Vector3f worldV = local.rotate(rotation);
-            Vec3d worldPos = origin.add(
+            Vec3 worldPos = origin.add(
                     worldV.x * scaleFactor,
                     worldV.y * scaleFactor,
                     worldV.z * scaleFactor);

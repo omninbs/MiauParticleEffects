@@ -1,7 +1,7 @@
 package org.miau.particleeffects.client.display;
 
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.Easing;
 import org.miau.particleeffects.animation.FadeOption;
@@ -9,7 +9,7 @@ import org.miau.particleeffects.model.MoveSpec;
 import org.miau.particleeffects.model.Orientation;
 
 /**
- * 显示实例基类：管。PENDING→ENTER→DISPLAY→EXIT→DELETED 状态机。 * 子类实现 {@link #spawnParticles(ClientWorld)} 来根据当前阶段和进度生成末地烛粒子。 */
+ * 显示实例基类：管。PENDING→ENTER→DISPLAY→EXIT→DELETED 状态机。 * 子类实现 {@link #spawnParticles(ClientLevel)} 来根据当前阶段和进度生成末地烛粒子。 */
 public abstract class DisplayInstance {
 
     public enum Phase {
@@ -20,7 +20,7 @@ public abstract class DisplayInstance {
         DELETED
     }
 
-    protected final Vec3d pos;
+    protected final Vec3 pos;
     protected final Orientation orientation;
     protected final int durationTicks;
     protected final int enterTicks;
@@ -36,7 +36,7 @@ public abstract class DisplayInstance {
     protected int tickCounter = 0;
     protected Phase phase = Phase.PENDING;
 
-    protected DisplayInstance(Vec3d pos, Orientation orientation,
+    protected DisplayInstance(Vec3 pos, Orientation orientation,
                                int durationTicks, int enterTicks, int exitTicks, int delayTicks,
                                Easing curve, AnimationSet entryAnim, AnimationSet exitAnim,
                                FadeOption fade, MoveSpec move, String id) {
@@ -129,13 +129,13 @@ public abstract class DisplayInstance {
         return curve.apply(phaseProgress());
     }
 
-    protected Vec3d computeMoveOffset(int currentTick, float partialTick) {
+    protected Vec3 computeMoveOffset(int currentTick, float partialTick) {
         if (move == null || phase != Phase.DISPLAY) {
-            return Vec3d.ZERO;
+            return Vec3.ZERO;
         }
         int moveTicks = move.durationTicks();
         if (moveTicks <= 0) {
-            return Vec3d.ZERO;
+            return Vec3.ZERO;
         }
         float t;
         if (currentTick >= moveTicks) {
@@ -144,7 +144,7 @@ public abstract class DisplayInstance {
             t = (currentTick + partialTick) / moveTicks;
         }
         float eased = move.curve().apply(Math.min(1f, Math.max(0f, t)));
-        return move.delta().multiply(eased);
+        return move.delta().scale(eased);
     }
 
     protected float computeFadeAlpha() {
@@ -166,5 +166,5 @@ public abstract class DisplayInstance {
     /**
      * 。tick 生成粒子到世界。子类根据当前阶段进度生成粒子（end_rod 粒子）。     *
      * @param world 客户端世界（用于 addParticleClient。     */
-    public abstract void spawnParticles(ClientWorld world);
+    public abstract void spawnParticles(ClientLevel world);
 }

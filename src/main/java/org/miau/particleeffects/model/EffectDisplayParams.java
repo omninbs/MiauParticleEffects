@@ -1,6 +1,6 @@
 package org.miau.particleeffects.model;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.animation.AnimCategory;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.Easing;
@@ -10,7 +10,7 @@ import java.util.List;
 
 public record EffectDisplayParams(
         EffectType type,
-        Vec3d pos,
+        Vec3 pos,
         float size,
         float waveSpeed,
         int colorArgb,

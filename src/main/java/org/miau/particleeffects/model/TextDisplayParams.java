@@ -1,6 +1,6 @@
 package org.miau.particleeffects.model;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.Easing;
 import org.miau.particleeffects.animation.FadeOption;
@@ -9,7 +9,7 @@ import java.util.List;
 
 public record TextDisplayParams(
         String text,
-        Vec3d pos,
+        Vec3 pos,
         float scale,
         int colorArgb,
         ColorMode colorMode,

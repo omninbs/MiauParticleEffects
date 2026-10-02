@@ -2,19 +2,21 @@ package org.miau.particleeffects.protocol;
 
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.HorizontalCurve;
 import org.miau.particleeffects.model.NoteBlockParams;
 import org.miau.particleeffects.model.TextDisplayParams;
-import org.miau.particleeffects.server.MiauParticleEffectsServer;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public final class MiauParticleEffectsPackets {
 
@@ -22,153 +24,150 @@ public final class MiauParticleEffectsPackets {
     }
 
     public static void registerCommon() {
-        PayloadTypeRegistry.playS2C().register(ShowTextPayload.ID, ShowTextPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(ShowEffectPayload.ID, ShowEffectPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(ClearPayload.ID, ClearPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(NoteBlockStartPayload.ID, NoteBlockStartPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(NoteBlockStopPayload.ID, NoteBlockStopPayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(NoteBlockActivationPayload.ID, NoteBlockActivationPayload.CODEC);
-        PayloadTypeRegistry.playC2S().register(BallLandedC2SPayload.ID, BallLandedC2SPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ShowTextPayload.ID, ShowTextPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ShowEffectPayload.ID, ShowEffectPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ClearPayload.ID, ClearPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(NoteBlockStartPayload.ID, NoteBlockStartPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(NoteBlockStopPayload.ID, NoteBlockStopPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(NoteBlockActivationPayload.ID, NoteBlockActivationPayload.CODEC);
     }
 
-    public static void registerServerReceivers() {
-        ServerPlayNetworking.registerGlobalReceiver(BallLandedC2SPayload.ID, (payload, context) -> {
-            ServerPlayerEntity player = context.player();
-            if (player == null) {
-                return;
-            }
-            MinecraftServer server = player.getEntityWorld().getServer();
-            if (server == null) {
-                return;
-            }
-            server.execute(() -> MiauParticleEffectsServer.onBallLanded(payload.ballIndex()));
-        });
-    }
-
-    public static void broadcast(MinecraftServer server, CustomPayload payload) {
+    public static void broadcast(MinecraftServer server, CustomPacketPayload payload) {
         if (server == null) {
             return;
         }
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             ServerPlayNetworking.send(player, payload);
         }
     }
 
-    public record ShowTextPayload(TextDisplayParams options) implements CustomPayload {
+    public record ShowTextPayload(TextDisplayParams options) implements CustomPacketPayload {
 
-        public static final CustomPayload.Id<ShowTextPayload> ID =
-                new CustomPayload.Id<>(Identifier.of("miauparticleeffects", "show_text"));
+        public static final CustomPacketPayload.Type<ShowTextPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "show_text"));
 
-        public static final PacketCodec<PacketByteBuf, ShowTextPayload> CODEC = new PacketCodec<>() {
+        public static final StreamCodec<FriendlyByteBuf, ShowTextPayload> CODEC = new StreamCodec<>() {
             @Override
-            public ShowTextPayload decode(PacketByteBuf buf) {
+            public ShowTextPayload decode(FriendlyByteBuf buf) {
                 return new ShowTextPayload(PayloadCodecs.TEXT.decode(buf));
             }
 
             @Override
-            public void encode(PacketByteBuf buf, ShowTextPayload value) {
+            public void encode(FriendlyByteBuf buf, ShowTextPayload value) {
                 PayloadCodecs.TEXT.encode(buf, value.options());
             }
         };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return ID;
         }
     }
 
-    public record ShowEffectPayload(EffectDisplayParams options) implements CustomPayload {
+    public record ShowEffectPayload(EffectDisplayParams options) implements CustomPacketPayload {
 
-        public static final CustomPayload.Id<ShowEffectPayload> ID =
-                new CustomPayload.Id<>(Identifier.of("miauparticleeffects", "show_effect"));
+        public static final CustomPacketPayload.Type<ShowEffectPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "show_effect"));
 
-        public static final PacketCodec<PacketByteBuf, ShowEffectPayload> CODEC = new PacketCodec<>() {
+        public static final StreamCodec<FriendlyByteBuf, ShowEffectPayload> CODEC = new StreamCodec<>() {
             @Override
-            public ShowEffectPayload decode(PacketByteBuf buf) {
+            public ShowEffectPayload decode(FriendlyByteBuf buf) {
                 return new ShowEffectPayload(PayloadCodecs.EFFECT.decode(buf));
             }
 
             @Override
-            public void encode(PacketByteBuf buf, ShowEffectPayload value) {
+            public void encode(FriendlyByteBuf buf, ShowEffectPayload value) {
                 PayloadCodecs.EFFECT.encode(buf, value.options());
             }
         };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return ID;
         }
     }
 
-    public record ClearPayload(ClearScope scope, String id) implements CustomPayload {
+    public record ClearPayload(ClearScope scope, String id) implements CustomPacketPayload {
 
-        public static final CustomPayload.Id<ClearPayload> ID =
-                new CustomPayload.Id<>(Identifier.of("miauparticleeffects", "clear"));
+        public static final CustomPacketPayload.Type<ClearPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "clear"));
 
-        public static final PacketCodec<PacketByteBuf, ClearPayload> CODEC = new PacketCodec<>() {
+        public static final StreamCodec<FriendlyByteBuf, ClearPayload> CODEC = new StreamCodec<>() {
             @Override
-            public ClearPayload decode(PacketByteBuf buf) {
-                ClearScope scope = ClearScope.parse(buf.readString(32));
-                String id = buf.readBoolean() ? buf.readString(128) : null;
+            public ClearPayload decode(FriendlyByteBuf buf) {
+                ClearScope scope = ClearScope.parse(buf.readUtf(32));
+                String id = buf.readBoolean() ? buf.readUtf(128) : null;
                 return new ClearPayload(scope != null ? scope : ClearScope.ALL, id);
             }
 
             @Override
-            public void encode(PacketByteBuf buf, ClearPayload value) {
-                buf.writeString(value.scope().id());
+            public void encode(FriendlyByteBuf buf, ClearPayload value) {
+                buf.writeUtf(value.scope().id());
                 buf.writeBoolean(value.id() != null);
                 if (value.id() != null) {
-                    buf.writeString(value.id());
+                    buf.writeUtf(value.id());
                 }
             }
         };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return ID;
         }
     }
 
-    public record NoteBlockStartPayload(NoteBlockParams options) implements CustomPayload {
+    public record NoteBlockStartPayload(NoteBlockParams options, List<Vec3> anchors) implements CustomPacketPayload {
 
-        public static final CustomPayload.Id<NoteBlockStartPayload> ID =
-                new CustomPayload.Id<>(Identifier.of("miauparticleeffects", "noteblock_start"));
+        public static final CustomPacketPayload.Type<NoteBlockStartPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "noteblock_start"));
 
-        public static final PacketCodec<PacketByteBuf, NoteBlockStartPayload> CODEC = new PacketCodec<>() {
+        public static final StreamCodec<FriendlyByteBuf, NoteBlockStartPayload> CODEC = new StreamCodec<>() {
             @Override
-            public NoteBlockStartPayload decode(PacketByteBuf buf) {
+            public NoteBlockStartPayload decode(FriendlyByteBuf buf) {
                 double x = buf.readDouble();
                 double y = buf.readDouble();
                 double z = buf.readDouble();
                 float radius = buf.readFloat();
                 int trail = buf.readVarInt();
-                String curveName = buf.readString(32);
+                String curveName = buf.readUtf(32);
                 int balls = buf.readVarInt();
                 float height = buf.readFloat();
                 boolean force = buf.readBoolean();
+                int anchorCount = buf.readVarInt();
+                List<Vec3> anchors = new ArrayList<>(anchorCount);
+                for (int i = 0; i < anchorCount; i++) {
+                    anchors.add(new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble()));
+                }
                 HorizontalCurve curve = curveName.isEmpty() ? HorizontalCurve.ARC : parseCurve(curveName);
                 try {
                     return new NoteBlockStartPayload(new NoteBlockParams(
-                            new Vec3d(x, y, z), radius, trail, curve, balls, height, force));
+                            new Vec3(x, y, z), radius, trail, curve, balls, height, force), anchors);
                 } catch (RuntimeException e) {
                     return new NoteBlockStartPayload(new NoteBlockParams(
-                            new Vec3d(x, y, z), NoteBlockParams.DEFAULT_RADIUS,
+                            new Vec3(x, y, z), NoteBlockParams.DEFAULT_RADIUS,
                             NoteBlockParams.DEFAULT_TRAIL, NoteBlockParams.DEFAULT_CURVE,
-                            NoteBlockParams.DEFAULT_BALLS, NoteBlockParams.DEFAULT_HEIGHT, false));
+                            NoteBlockParams.DEFAULT_BALLS, NoteBlockParams.DEFAULT_HEIGHT, false), List.of());
                 }
             }
 
             @Override
-            public void encode(PacketByteBuf buf, NoteBlockStartPayload value) {
+            public void encode(FriendlyByteBuf buf, NoteBlockStartPayload value) {
                 buf.writeDouble(value.options().center().x);
                 buf.writeDouble(value.options().center().y);
                 buf.writeDouble(value.options().center().z);
                 buf.writeFloat(value.options().radius());
                 buf.writeVarInt(value.options().trailCount());
-                buf.writeString(value.options().curve().id());
+                buf.writeUtf(value.options().curve().id());
                 buf.writeVarInt(value.options().ballCount());
                 buf.writeFloat(value.options().maxJumpHeight());
                 buf.writeBoolean(value.options().force());
+                List<Vec3> anchors = value.anchors();
+                buf.writeVarInt(anchors.size());
+                for (Vec3 anchor : anchors) {
+                    buf.writeDouble(anchor.x);
+                    buf.writeDouble(anchor.y);
+                    buf.writeDouble(anchor.z);
+                }
             }
 
             private static HorizontalCurve parseCurve(String s) {
@@ -178,83 +177,64 @@ public final class MiauParticleEffectsPackets {
         };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return ID;
         }
     }
 
-    public record NoteBlockStopPayload() implements CustomPayload {
+    public record NoteBlockStopPayload() implements CustomPacketPayload {
 
-        public static final CustomPayload.Id<NoteBlockStopPayload> ID =
-                new CustomPayload.Id<>(Identifier.of("miauparticleeffects", "noteblock_stop"));
+        public static final CustomPacketPayload.Type<NoteBlockStopPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "noteblock_stop"));
 
-        public static final PacketCodec<PacketByteBuf, NoteBlockStopPayload> CODEC = new PacketCodec<>() {
+        public static final StreamCodec<FriendlyByteBuf, NoteBlockStopPayload> CODEC = new StreamCodec<>() {
             @Override
-            public NoteBlockStopPayload decode(PacketByteBuf buf) {
+            public NoteBlockStopPayload decode(FriendlyByteBuf buf) {
                 return new NoteBlockStopPayload();
             }
 
             @Override
-            public void encode(PacketByteBuf buf, NoteBlockStopPayload value) {
+            public void encode(FriendlyByteBuf buf, NoteBlockStopPayload value) {
             }
         };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return ID;
         }
     }
 
-    public record NoteBlockActivationPayload(int ballIndex, Vec3d target, int note) implements CustomPayload {
+    public record NoteBlockActivationPayload(int ballIndex, Vec3 target, int note, int durationTicks)
+            implements CustomPacketPayload {
 
-        public static final CustomPayload.Id<NoteBlockActivationPayload> ID =
-                new CustomPayload.Id<>(Identifier.of("miauparticleeffects", "noteblock_activation"));
+        public static final CustomPacketPayload.Type<NoteBlockActivationPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "noteblock_activation"));
 
-        public static final PacketCodec<PacketByteBuf, NoteBlockActivationPayload> CODEC = new PacketCodec<>() {
+        public static final StreamCodec<FriendlyByteBuf, NoteBlockActivationPayload> CODEC = new StreamCodec<>() {
             @Override
-            public NoteBlockActivationPayload decode(PacketByteBuf buf) {
+            public NoteBlockActivationPayload decode(FriendlyByteBuf buf) {
                 return new NoteBlockActivationPayload(
                         buf.readVarInt(),
-                        new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble()),
+                        new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble()),
+                        buf.readVarInt(),
                         buf.readVarInt());
             }
 
             @Override
-            public void encode(PacketByteBuf buf, NoteBlockActivationPayload value) {
+            public void encode(FriendlyByteBuf buf, NoteBlockActivationPayload value) {
                 buf.writeVarInt(value.ballIndex());
                 buf.writeDouble(value.target().x);
                 buf.writeDouble(value.target().y);
                 buf.writeDouble(value.target().z);
                 buf.writeVarInt(value.note());
+                buf.writeVarInt(value.durationTicks());
             }
         };
 
         @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
             return ID;
         }
     }
 
-    public record BallLandedC2SPayload(int ballIndex) implements CustomPayload {
-
-        public static final CustomPayload.Id<BallLandedC2SPayload> ID =
-                new CustomPayload.Id<>(Identifier.of("miauparticleeffects", "ball_landed"));
-
-        public static final PacketCodec<PacketByteBuf, BallLandedC2SPayload> CODEC = new PacketCodec<>() {
-            @Override
-            public BallLandedC2SPayload decode(PacketByteBuf buf) {
-                return new BallLandedC2SPayload(buf.readVarInt());
-            }
-
-            @Override
-            public void encode(PacketByteBuf buf, BallLandedC2SPayload value) {
-                buf.writeVarInt(value.ballIndex());
-            }
-        };
-
-        @Override
-        public CustomPayload.Id<? extends CustomPayload> getId() {
-            return ID;
-        }
-    }
 }

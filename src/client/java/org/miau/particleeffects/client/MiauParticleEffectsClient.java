@@ -3,7 +3,7 @@ package org.miau.particleeffects.client;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry;
+import net.fabricmc.fabric.api.client.particle.v1.ParticleProviderRegistry;
 import org.miau.particleeffects.client.display.ClientDisplayBackend;
 import org.miau.particleeffects.client.display.ClientDisplayManager;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
@@ -16,10 +16,10 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
     public void onInitializeClient() {
         ClientDisplayBackend.init();
 
-        ParticleFactoryRegistry.getInstance().register(
+        ParticleProviderRegistry.getInstance().register(
                 MiauParticleEffectsParticles.COLORED_END_ROD,
                 ColoredEndRodParticle::createFactory);
-        ParticleFactoryRegistry.getInstance().register(
+        ParticleProviderRegistry.getInstance().register(
                 MiauParticleEffectsParticles.COLORED_HEAD,
                 ColoredEndRodParticle::createFactory);
 
@@ -44,7 +44,7 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(
                 MiauParticleEffectsPackets.NoteBlockStartPayload.ID,
                 (payload, context) -> context.client().execute(
-                        () -> ClientDisplayManager.noteBlockStart(payload.options())));
+                        () -> ClientDisplayManager.noteBlockStart(payload.options(), payload.anchors())));
 
         ClientPlayNetworking.registerGlobalReceiver(
                 MiauParticleEffectsPackets.NoteBlockStopPayload.ID,
@@ -55,6 +55,6 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
                 MiauParticleEffectsPackets.NoteBlockActivationPayload.ID,
                 (payload, context) -> context.client().execute(
                         () -> ClientDisplayManager.noteBlockActivate(
-                                payload.ballIndex(), payload.target(), payload.note())));
+                                payload.ballIndex(), payload.target(), payload.note(), payload.durationTicks())));
     }
 }

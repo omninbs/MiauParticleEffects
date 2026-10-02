@@ -2,8 +2,8 @@ package org.miau.particleeffects.command;
 
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.text.Text;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.network.chat.Component;
 
 public final class Feedback {
 
@@ -11,14 +11,14 @@ public final class Feedback {
     }
 
     public static CommandSyntaxException error(String message) {
-        return new SimpleCommandExceptionType(Text.literal("§c[mpe] " + message)).create();
+        return new SimpleCommandExceptionType(Component.literal("§c[mpe] " + message)).create();
     }
 
-    public static void send(ServerCommandSource source, String message) {
-        source.sendFeedback(() -> Text.literal("§7[mpe] §f" + message), false);
+    public static void send(CommandSourceStack source, String message) {
+        source.sendSuccess(() -> Component.literal("§7[mpe] §f" + message), false);
     }
 
-    public static void warn(ServerCommandSource source, String message) {
-        source.sendFeedback(() -> Text.literal("§e[mpe] §f" + message), false);
+    public static void warn(CommandSourceStack source, String message) {
+        source.sendSuccess(() -> Component.literal("§e[mpe] §f" + message), false);
     }
 }
