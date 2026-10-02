@@ -2,34 +2,57 @@
 
 <img src="https://raw.githubusercontent.com/omninbs/MiauParticleEffects/main/docs/logo.png" alt="MiauParticleEffects" width="1280"/>
 
-# MiauParticleEffects - Cat Particle Effects
+# MiauParticleEffects
 
-### A little cat turns redstone music into a sky full of light.
-### Bind note blocks to particle effects for a visual feast alongside your redstone music.
+**A little cat turns redstone music into a sky full of light.**
 
-[![Java 21](https://img.shields.io/badge/Java-21-orange.svg)](#requirements)
-[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-55B91E.svg)](#requirements)
-[![Fabric](https://img.shields.io/badge/Fabric-API-dbd0b4.svg)](#requirements)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+Bind note blocks to particle effects for a visual feast alongside your redstone music.
+
+**English** · [简体中文](README_CN.md)
+
+[![Java](https://img.shields.io/badge/Java-21%20%7C%2025-orange?style=flat-square)](#-requirements)
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1%20~%2026.2-55B91E?style=flat-square)](#-requirements)
+[![Fabric API](https://img.shields.io/badge/Fabric%20API-supported-dbd0b4?style=flat-square)](#-requirements)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/omninbs/MiauParticleEffects?style=flat-square&color=yellow)](https://github.com/omninbs/MiauParticleEffects/stargazers)
+[![Demo](https://img.shields.io/badge/Demo-Bilibili-ff69b4?style=flat-square)](https://www.bilibili.com/video/BV12Ket6rEG9/)
 
 </div>
 
 ---
 
-## About
+## 📖 Table of Contents
 
-**MiauParticleEffects** is a Minecraft Java Fabric mod made for **redstone music**. It binds note blocks to particle effects so every activated note can become part of a synchronized visual performance:
-
-- Render lyrics as particle pixels with rich entrance and exit animations.
-- Cast particle effects including hollow cubes, tetrahedrons, cosmic explosions, and water ripples.
-- Make a bouncing comet travel between activated note blocks.
-- Use solid colors, static gradients, flowing rainbow gradients, or continuously cycling rainbow colors.
-
-Particle-written lyrics + a visualizer following your redstone melody creates a single experience where **music and light become one**.
+- [✨ About](#-about)
+- [🚀 Requirements](#-requirements)
+- [📦 Installation](#-installation)
+- [🎆 Features](#-features)
+- [📖 Command Reference](#-command-reference)
+- [💡 Examples](#-examples)
+- [⚙️ Configuration](#-configuration)
+- [🖼️ Screenshots](#-screenshots)
+- [📚 Documentation](#-documentation)
+- [🔭 Roadmap](#-roadmap)
+- [🧩 Multi-Version Support](#-multi-version-support)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
 
 ---
 
-## Requirements
+## ✨ About
+
+**MiauParticleEffects** is a Minecraft Java (Fabric) mod built for **redstone music**. It binds note blocks to particle effects so every activated note becomes part of a synchronized visual performance:
+
+- 🧱 **Particle lyrics** — rasterize text into particle pixels with rich entrance/exit animations.
+- 💥 **Particle effects** — hollow cubes, tetrahedrons, cosmic explosions, and water ripples.
+- 🎵 **Note-block comet** — a bouncing, trailing comet that dances between activated note blocks.
+- 🌈 **Color modes** — solid colors, static gradients, flowing rainbow gradients, or cycling rainbow colors.
+
+Particle-written lyrics + a visualizer following your redstone melody → **music and light become one**.
+
+---
+
+## 🚀 Requirements
 
 | Item | Version |
 |---|---|
@@ -38,44 +61,49 @@ Particle-written lyrics + a visualizer following your redstone melody creates a 
 | API | Fabric API (latest for the matching Minecraft version) |
 | Java | **21** (1.21.x) / **25** (26.x) |
 
-> Install the mod on both client and server. A dedicated server needs the mod to detect note blocks and broadcast display events.
+> [!IMPORTANT]
+> Install the mod on **both client and server**. A dedicated server needs it to detect note blocks and broadcast display events.
 
-## Installation
+---
 
-1. Install [Fabric Loader](https://fabricmc.net/use/) for Minecraft 1.21.11.
-2. Put `MiauParticleEffects-1.0.jar` in your `mods/` folder.
-3. Install the latest compatible [Fabric API](https://modrinth.com/mod/fabric-api).
+## 📦 Installation
+
+1. Install [Fabric Loader](https://fabricmc.net/use/) for your Minecraft version.
+2. Put `MiauParticleEffects-<version>.jar` into your `mods/` folder.
+3. Install the matching [Fabric API](https://modrinth.com/mod/fabric-api).
 4. Launch the game and run `/mpe` or `/miauparticleeffects`.
 
 ---
 
-## Features
+## 🎆 Features
 
-### Particle Lyrics
+### 🟦 Particle Lyrics
 
 ```text
 /mpe text "<lyrics>" <x> <y> <z> [options]
 ```
 
-- Rasterizes every character into particle pixels.
+- Rasterizes every character into **particle pixels**.
 - Supports Minecraft `§` color codes.
-- Supports `slide`, `scale`, `spacing`, `clarity`, and fade animations.
-- Uses global `density` to control pixel spacing, quality, and particle cost.
+- Entrance/exit animations: `slide`, `scale`, `spacing`, `clarity`, plus `fade`.
+- Global `density` controls pixel spacing, quality, and particle cost.
 
-### Particle Effects
+### 🔊 Particle Effects
 
 ```text
 /mpe effect <cube|tetra|explosion|wave> <x> <y> <z> [options]
 ```
 
-- **cube** — hollow wireframe cube
-- **tetra** — hollow tetrahedron
-- **explosion** — cosmic particles radiating in every direction
-- **wave** — expanding water ripple with controllable speed
+| Type | Description |
+|---|---|
+| `cube` | Hollow wireframe cube |
+| `tetra` | Hollow tetrahedron |
+| `explosion` | Cosmic particles radiating in every direction |
+| `wave` | Expanding water ripple with controllable speed |
 
-### Note-Block Comet (per-track)
+### 🎵 Note-Block Comet
 
-First **select your tracks in game**; each track owns exactly one comet:
+Each track owns exactly one comet, so **select your tracks first**:
 
 ```text
 /mpe noteblock select start [link=3]   # enter selection mode
@@ -84,30 +112,25 @@ First **select your tracks in game**; each track owns exactly one comet:
 /mpe noteblock on [options]            # enable
 ```
 
-- **Track recognition**: starting from each clicked block, the mod floods note blocks on the **same Y level** within a horizontal distance of `link` (default 3). The seed may be a repeater, redstone dust, etc. — it snaps to the nearest note block within 3 blocks.
-- **No track bleeding**: limiting to the same Y level keeps vertically stacked tracks separate, so a track never absorbs another one.
-- **One ball per track**: every note block belongs to a track; when activated, it drives that track's single **bouncing comet with a fading trail** to the top-center of the block. Multiple notes on the same track in the same tick → one is chosen at random. Tracks never interfere, so a ball can neither get stuck nor jump onto another track.
-- **Limit**: up to **32 tracks** (= up to 32 balls).
-- **Rhythm sync**: the server learns the note order within each track and pre-sends the predicted next note block so comets keep up with the song.
-- Running `on` without any selected track reports that you must select tracks first.
+- **Track recognition** — starting from each clicked block, the mod floods note blocks on the **same Y level** within a horizontal distance of `link` (default `3`). The seed may be a repeater, redstone dust, etc. — it snaps to the nearest note block within 3 blocks.
+- **No track bleeding** — limiting to the same Y level keeps vertically stacked tracks separate, so a track never absorbs another one.
+- **One ball per track** — every note block belongs to a track; when activated, it drives that track's single **bouncing comet with a fading trail** to the top-center of the block. Multiple notes on the same track in the same tick → one is chosen at random. Tracks never interfere, so a ball can neither get stuck nor jump onto another track.
+- **Limit** — up to **32 tracks** (= up to 32 comets).
+- **Rhythm sync** — the server learns the note order within each track and pre-sends the predicted next note block so comets keep up with the song.
+- Running `on` without a selected track reports that you must select tracks first.
 
-### Four Color Modes
+### 🎨 Color Modes
 
 ```text
-color=#FFD700
-gradient=#FF0000,#00FF00,#0000FF
-gradient=rainbow
-color=rainbow
+color=#FFD700                        # solid (alpha supported)
+gradient=#FF0000,#00FF00,#0000FF     # static gradient
+gradient=rainbow                     # flowing rainbow gradient
+color=rainbow                        # one color cycling through the rainbow
 ```
-
-- `color=#...` — solid color
-- `gradient=#...,#...` — static gradient
-- `gradient=rainbow` — flowing rainbow gradient
-- `color=rainbow` — one color cycling through the rainbow
 
 ---
 
-## Command Reference
+## 📖 Command Reference
 
 | Command | Description |
 |---|---|
@@ -120,23 +143,16 @@ color=rainbow
 | `clear [all\|text\|effect\|id=<ID>]` | Clear displays |
 | `autoclear <on\|off>` | Let old text exit before new text starts |
 
-Run a subcommand without its arguments for detailed usage:
+Run a subcommand without its arguments, or query it directly:
 
 ```text
-/mpe text
-/mpe effect
-/mpe noteblock
+/mpe text          /mpe help text
+/mpe effect        /mpe help effect
+/mpe noteblock     /mpe help noteblock
 ```
 
-Or query it directly:
-
-```text
-/mpe help text
-/mpe help effect
-/mpe help noteblock
-```
-
-### Common Options
+<details>
+<summary><b>⚙️ Common options (<code>text</code> / <code>effect</code>)</b></summary>
 
 ```text
 scale=1.5 color=#FFD700 towards=45,0,0 duration=100 enter=10 exit=10
@@ -147,7 +163,10 @@ gradient=#FF0000,#00FF00 gradient=rainbow color=rainbow force=true
 
 `force=true` bypasses normal particle distance culling. It is useful for distant displays, but can increase client rendering cost.
 
-### Note-Block Options
+</details>
+
+<details>
+<summary><b>🎵 Note-block options</b></summary>
 
 ```text
 # Selecting tracks
@@ -158,9 +177,11 @@ select done / select clear / select status
 selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
 ```
 
+</details>
+
 ---
 
-## Examples
+## 💡 Examples
 
 ```text
 /mpe text "§4Burn §6bright §btonight" 100 64 100 scale=1.2 color=#FFD700 in=slide:up,scale:enlarge fade=in
@@ -168,6 +189,7 @@ selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
 /mpe effect cube 100 64 100 size=2 color=#00FFFF rotate=0,1,0,3
 /mpe effect explosion 100 64 100 size=6 gradient=#FF4500,#FFFFFF
 /mpe effect wave 100 64 100 size=5 speed=3 color=#00FF00
+
 /mpe noteblock select start link=3
 # after left-clicking every track:
 /mpe noteblock select done
@@ -176,7 +198,7 @@ selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 The mod creates `config/miauparticleeffects.json` on first launch:
 
@@ -188,13 +210,15 @@ The mod creates `config/miauparticleeffects.json` on first launch:
 }
 ```
 
-- `density` controls text sampling density.
-- `autoclear` makes new text wait for old text to exit.
-- `defaultScale` controls the default glyph height.
+| Key | Description |
+|---|---|
+| `density` | Text sampling density (smaller = sharper, more particles) |
+| `autoclear` | Make new text wait for old text to exit |
+| `defaultScale` | Default glyph height in blocks |
 
 ---
 
-## Screenshots
+## 🖼️ Screenshots
 
 <table>
   <tr>
@@ -204,13 +228,11 @@ The mod creates `config/miauparticleeffects.json` on first launch:
   </tr>
 </table>
 
-More details can be seen in the [showcase video on Bilibili](https://www.bilibili.com/video/BV12Ket6rEG9/).
-
-截图的话就很难展现内容了，而且还麻烦，猫猫喜欢偷懒喵！
+Screenshots can hardly do it justice — watch the [showcase video on Bilibili](https://www.bilibili.com/video/BV12Ket6rEG9/).
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 - [English usage guide](docs/USAGE.md)
 - [中文使用教程](docs/USAGE_CN.md)
@@ -218,11 +240,11 @@ More details can be seen in the [showcase video on Bilibili](https://www.bilibil
 
 ---
 
-## Roadmap
+## 🔭 Roadmap
 
 - [x] Particle text and animations
 - [x] Cube, tetrahedron, explosion, and wave effects
-- [x] Note-block comet binding
+- [x] Note-block comet binding (per-track)
 - [x] Static gradients and rainbow color modes
 - [ ] Integration with the [NoteBlockWeb editor](https://github.com/omninbs/NoteBlockWeb)
 - [ ] More languages and particle effects
@@ -231,7 +253,7 @@ More details can be seen in the [showcase video on Bilibili](https://www.bilibil
 
 ---
 
-## Multi-Version Support
+## 🧩 Multi-Version Support
 
 This project uses [Stonecutter](https://stonecutter.kikugie.dev/) to build **one codebase for multiple Minecraft versions**, with `loom-back-compat` selecting the correct Loom variant (obfuscated vs unobfuscated) automatically. Sources are written against Mojang official mappings.
 
@@ -250,11 +272,12 @@ gradlew :1.21.8:build
 - Version differences are handled with Stonecutter conditional comments (`/*? if ... */`) and replacements in `stonecutter.gradle.kts`.
 - Switch back to 26.2 before committing: `gradlew "Set active project to 26.2"`.
 
+> [!NOTE]
 > **Build prerequisites:** the Gradle daemon must run on **Java 25** (Loom 1.18 requires it). This is handled automatically by `gradle/gradle-daemon-jvm.properties` — Gradle will pick (or download via foojay) a Java 25 JVM for the daemon, regardless of your `JAVA_HOME`. The Java 21 toolchain for the 1.21.x targets is auto-provisioned as well.
 
 ---
 
-## Contributing
+## 🤝 Contributing
 
 Issues, suggestions, and pull requests are welcome. Please include:
 
@@ -267,10 +290,8 @@ Most of the implementation was developed with AI assistance, followed by manual 
 
 ---
 
-## License
+## 📄 License
 
 Licensed under the [Apache License 2.0](LICENSE).
-
-## Credits
 
 Built with [Fabric](https://fabricmc.net/) and the Fabric API. Inspired by the creativity of redstone music.
