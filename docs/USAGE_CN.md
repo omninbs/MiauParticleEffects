@@ -214,70 +214,76 @@ color=rainbow
 
 `speed` 单位是方块/秒。速度越大，水波越快展开。展开阶段使用粒子速度插值，避免环面以 20 tick/秒的离散位置跳动。
 
-## 七、音符盒弹力球（按轨道）
+## 七、音符盒弹力球（生成器联动）
 
-### 1. 先选择轨道
+### 1. 由生成器下发时间轴
 
-每条轨道对应一颗弹力球，开启前必须手动选择轨道：
-
-```text
-/mpe noteblock select start [link=3]   # 进入选择模式（link 为轨道内相邻音符盒的最大水平间距，1~8）
-# 左键点击每条链式轨道上的任意方块（不会真的破坏方块）
-/mpe noteblock select done             # 结束选择，识别轨道
-/mpe noteblock select clear            # 清空已点击的种子（仍在选择模式）
-/mpe noteblock select status           # 查看选择进度与已识别轨道
-```
-
-轨道识别规则：从点击的方块出发，在**同一 Y 层**内按水平间距 ≤ `link` 连通扩散出整条轨道的音符盒。种子点可以落在中继器、红石线等非音符盒方块上（自动吸附 3 格内最近的音符盒）。由于限定同一 Y 层，上下叠放的轨道互不连通，因此不会串轨。最多选择 **32 条轨道**。
-
-### 2. 开启
+每条链式结构在起点放一个**脉冲命令方块**，启动时执行：
 
 ```text
-/mpe noteblock on [选项]
-/mpe noteblock off
-/mpe noteblock status
-/mpe noteblock set [选项]
+/mpe noteblock chain <anchor> <notes> [选项]
 ```
 
-未选择轨道就执行 `on` 会提示先完成选择。
+- `<anchor>`：锚点。`~~~` = 命令方块（或执行者）自身所在方块坐标，也就是链的起点；也可写 `x,y,z` 绝对方块坐标。
+- `<notes>`：音符数据，格式 `x,y,z,delay|x,y,z,delay|...`
+  - `x,y,z` 是相对锚点的整数方块偏移（可为负）
+  - `delay` 是「距上一个音符的间隔」，单位为游戏 tick（20 tick = 1 秒）
+  - 第 0 个音符的 `delay` 从命令方块执行那一刻算起
+- 一次下发整条时间轴，模组按数据播放，**不再检测音符盒发声、不再反推红石走线**，第一遍播放就与歌曲对齐。
+- 同一锚点再次执行 = 重置该链并从头重播。
 
-### 参数
+### 2. 播放与管理
+
+```text
+/mpe noteblock chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8|12,0,0,16|   # 下发/重播
+/mpe noteblock clear                                            # 移除全部链
+/mpe noteblock clear id=<id>                                    # 移除指定链
+/mpe noteblock status                                           # 查看存活的链
+```
+
+### 3. 链选项
 
 | 选项 | 说明 | 默认值 |
 |---|---|---:|
-| `selector=` | `@p`、`@a`、`@e`、`@s`、玩家名或 UUID | 玩家自身 / 命令方块 `@p` |
-| `radius=` | 水平检测半径，范围 `1` 到 `256` | `16` |
 | `trail=` | 拖尾粒子数，范围 `2` 到 `256` | `24` |
-| `curve=` | `line`、`arc`、`sine` | `arc` |
-| `height=` | 抛物线最高点相对高度，范围 `0.5` 到 `64` | `3` |
+| `curve=` | 竖直起伏：`arc`（抛物线）、`sine`（正弦）、`line`（不弹跳） | `arc` |
+| `height=` | 跳跃**最大**高度（方块），范围 `0.5` 到 `64` | `3` |
+| `color=` | 纯色 `#RRGGBB`，或 `rainbow`（颜色随时钟循环） | 按锚点自动取色 |
+| `gradient=` | 渐变 `#RRGGBB,#RRGGBB[,...]`，或 `rainbow` | 无 |
+| `linger=` | 最后一个音符后继续停留的 tick 数，`-1` = 常驻 | `40` |
 | `force=` | 忽略粒子距离剔除 | `false` |
 
-> 弹力球数量不再通过 `count=` 指定：**球数 = 已选轨道数**（上限 32）。
+### 行为规则
+
+- **一链一球**：一条链对应一颗弹力球，只跟着本链的时间轴走，链之间互不干扰，不会串轨或卡死。
+- 落点是被触发音符盒的**上表面中心**：音符盒坐标加 `(0.5, 1.0, 0.5)`。
+- **轨迹按渲染帧（约 60FPS）求值**：位置不再只按 20Hz 的 tick 更新，曲线连续、没有折线/多边形感；拖尾按弧长加密补点，形成平滑彗尾。
+- **动态高度**：`height=` 只是上限，实际顶点按这一跳的水平距离与间隔在 `[H-2, H]` 之间动态取值；当 `H ≤ 2` 时顶点恒为 `H`。
+- **球体外观**：亮核 + 球面外壳光点，尾部由粗到细，兼顾「小球」与「彗星」两种观感。
+- 颜色：有 `gradient=` 时按链进度采样，否则用 `color=`（或彩虹）。
+
+### 4. 音符盒触发特效
+
+开启后，每个音符盒被触发的瞬间，会在它所在位置播放一次指定特效：
+
+```text
+/mpe noteblock triggereffect effect <类型> <x> <y> <z> [选项]
+/mpe noteblock triggereffect on
+/mpe noteblock triggereffect off
+```
+
+- 参数语法与 `/mpe effect` 完全一致（`cube|tetra|explosion|wave` + 全部选项，补全也一致）。
+- `<x> <y> <z>` 是**相对目标音符盒方块**的偏移：`~~~` 即音符盒方块本身，`~ ~2 ~` = 音符盒正上方 2 格。
+- 默认参数：`wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF`。
+- `on` 只对之后的音符生效，不会补播历史音符；开关与参数会持久保存到配置文件。
 
 示例：
 
 ```text
-/mpe noteblock select start link=3
-# 左键依次点击每条轨道后：
-/mpe noteblock select done
-/mpe noteblock on radius=32 trail=24 curve=arc height=3
-/mpe noteblock set trail=12 height=2
-/mpe noteblock status
-/mpe noteblock off
+/mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
+/mpe noteblock triggereffect effect cube ~ ~1 ~ size=1.5 color=rainbow duration=10
+/mpe noteblock triggereffect on
 ```
-
-### 行为规则
-
-- 玩家执行时，中心是玩家位置。
-- 命令方块未指定 `selector=` 时，中心默认使用 `@p`。
-- 目标位置是被激活音符盒的**上表面中心**：方块坐标加 `(0.5, 1.0, 0.5)`。
-- 一颗弹力球绑定一条轨道（`ballIndex == trackIndex`），只响应本轨道的音符盒，不会串轨或卡在别的轨道上。
-- 同一轨道同 tick 多个音符 → 随机取其中一个。
-- Y 轴使用抛物线，最高点由 `height=` 控制。
-- X/Z 平面使用 `line`、`arc`、`sine` 曲线。
-- 服务端会学习每条轨道内的音符先后顺序，提前预判下一个音符盒并下发，让弹力球跟上歌曲速度。
-- 拖尾粒子按 `trail=` 数量自然淡出。
-- 彗星头是较大的圆形光球，拖尾是较小的星形粒子。
 
 ## 八、清除与自动清除
 
@@ -310,7 +316,7 @@ color=rainbow
 
 ### 音符盒没有触发
 
-确认已经执行 `/mpe noteblock on`，音符盒在 `radius=` 范围内，并且服务端安装了模组。
+确认链已被下发（`/mpe noteblock status` 能看到）、命令方块执行过 `/mpe noteblock chain`，并且服务端安装了模组。
 
 ### 水波速度不合适
 

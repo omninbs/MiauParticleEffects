@@ -103,21 +103,28 @@ Particle-written lyrics + a visualizer following your redstone melody → **musi
 
 ### 🎵 Note-Block Comet
 
-Each track owns exactly one comet, so **select your tracks first**:
+Your **generator** places one pulse command block at the start of each chain and hands the whole
+timeline to the mod in one shot:
 
 ```text
-/mpe noteblock select start [link=3]   # enter selection mode
-# left-click any block on each chained track (blocks are NOT actually broken)
-/mpe noteblock select done             # recognize tracks
-/mpe noteblock on [options]            # enable
+/mpe noteblock chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8|12,0,0,16| curve=arc height=3 trail=24
 ```
 
-- **Track recognition** — starting from each clicked block, the mod floods note blocks on the **same Y level** within a horizontal distance of `link` (default `3`). The seed may be a repeater, redstone dust, etc. — it snaps to the nearest note block within 3 blocks.
-- **No track bleeding** — limiting to the same Y level keeps vertically stacked tracks separate, so a track never absorbs another one.
-- **One ball per track** — every note block belongs to a track; when activated, it drives that track's single **bouncing comet with a fading trail** to the top-center of the block. Multiple notes on the same track in the same tick → one is chosen at random. Tracks never interfere, so a ball can neither get stuck nor jump onto another track.
-- **Limit** — up to **32 tracks** (= up to 32 comets).
-- **Rhythm sync** — the server learns the note order within each track and pre-sends the predicted next note block so comets keep up with the song.
-- Running `on` without a selected track reports that you must select tracks first.
+- **Pure timeline drive** — the mod no longer listens for note-block sounds or traces redstone wiring; each chain's order and spacing come straight from the generator (`x,y,z,delay`, `delay` in game ticks), so it **lines up with the song on the very first playthrough**.
+- **One comet per chain** — every chain owns a single comet with a trailing tail, and it always lands on the top-center of a note block. Chains never interfere, so nothing bleeds or gets stuck.
+- **60 FPS trajectory** — the position is re-evaluated every rendered frame (about 60 FPS), so the curve stays continuous with no polygonal look; the trail is resampled by arc length for a smooth comet tail.
+- **Ball shape** — a bright core plus shell points on a sphere forms a glowing ball, with a tail that tapers from thick to thin — a comet, and a nod to *Rolling Sky*.
+- **Dynamic jump height** — `height` is only a **ceiling**: each hop picks an apex between `[H-2, H]` based on its horizontal distance and delay (`H ≤ 2` keeps it fixed at `H`).
+- Re-running on the same anchor resets that chain and replays it from the start.
+
+**Note-triggered effect** (optional): when enabled, every note block fires a chosen effect at its own position the moment it is triggered.
+
+```text
+/mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
+/mpe noteblock triggereffect on
+```
+
+The arguments follow `/mpe effect` exactly, where `~~~` means **the target note block itself** (`~ ~2 ~` = two blocks above the note block).
 
 ### 🎨 Color Modes
 
@@ -138,8 +145,10 @@ color=rainbow                        # one color cycling through the rainbow
 | `density <0.01~1>` | Set persistent pixel sampling density |
 | `text "<text>" <x> <y> <z> [options]` | Display text with particles |
 | `effect <type> <x> <y> <z> [options]` | Cast a particle effect |
-| `noteblock select start\|done\|clear\|status` | Select note-block tracks (left-click; blocks are not actually broken) |
-| `noteblock on\|off\|status\|set` | Enable and manage the note-block comet (ball count = selected track count) |
+| `noteblock chain <anchor> <notes> [options]` | Send / replay one chain (generator-driven) |
+| `noteblock clear [id=<ID>]` | Remove all chains, or one chain by id |
+| `noteblock status` | List the chains currently alive |
+| `noteblock triggereffect on\|off\|effect <args>` | Note-triggered effect switch and parameters (reuses the `effect` syntax) |
 | `clear [all\|text\|effect\|id=<ID>]` | Clear displays |
 | `autoclear <on\|off>` | Let old text exit before new text starts |
 
@@ -169,12 +178,18 @@ gradient=#FF0000,#00FF00 gradient=rainbow color=rainbow force=true
 <summary><b>🎵 Note-block options</b></summary>
 
 ```text
-# Selecting tracks
-select start link=3        # max horizontal spacing between adjacent note blocks on a track (1~8)
-select done / select clear / select status
+# Chain parameters (written into a command block by the generator)
+chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8     # note data x,y,z,delay|... ; delay in ticks
+trail=24       # trail length in particles (2~256)
+curve=arc      # vertical arc: arc | sine | line (no bounce)
+height=3       # maximum jump height (the apex varies dynamically within [H-2, H])
+color=rainbow  # solid #RRGGBB or rainbow; gradient=#RRGGBB,#RRGGBB also works
+linger=40      # ticks to linger after the last note (-1 = permanent)
+force=true     # bypass distance culling
 
-# Enabling (ball count is derived from the selected track count, no count= needed)
-selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
+# Note-triggered effect
+triggereffect on / off
+triggereffect effect wave ~ ~2 ~ duration=4 speed=8 size=2.8 color=#11FFFF
 ```
 
 </details>
@@ -190,10 +205,9 @@ selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
 /mpe effect explosion 100 64 100 size=6 gradient=#FF4500,#FFFFFF
 /mpe effect wave 100 64 100 size=5 speed=3 color=#00FF00
 
-/mpe noteblock select start link=3
-# after left-clicking every track:
-/mpe noteblock select done
-/mpe noteblock on radius=32 trail=24 height=3
+/mpe noteblock chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8|12,0,0,16| curve=arc height=3 color=rainbow
+/mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 size=2.8 color=#11FFFF
+/mpe noteblock triggereffect on
 ```
 
 ---

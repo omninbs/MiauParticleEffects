@@ -42,6 +42,7 @@ dependencies {
     fapi("fabric-lifecycle-events-v1")
     fapi("fabric-networking-api-v1")
     fapi("fabric-particles-v1")
+    fapi("fabric-rendering-v1")
     fapi("fabric-data-generation-api-v1")
 }
 

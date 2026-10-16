@@ -100,23 +100,29 @@
 | `explosion` | 向四面迸发的宇宙爆炸 |
 | `wave` | 不断扩散的水波（速度可调） |
 
-### 🎵 音符盒弹力球（按轨道）
+### 🎵 音符盒弹力球（生成器联动）
 
-先在游戏里**手动框选轨道**，每条轨道对应一颗弹力球：
+由**生成器**在每条链式结构起点放一个脉冲命令方块，启动时把整条时间轴一次性交给模组：
 
 ```text
-/mpe noteblock select start [link=3]   # 进入选择模式
-# 左键点击每条链式轨道上的任意方块（不会真的破坏）
-/mpe noteblock select done             # 识别轨道
-/mpe noteblock on [选项]               # 开启
+/mpe noteblock chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8|12,0,0,16| curve=arc height=3 trail=24
 ```
 
-- **轨道识别** —— 从点击的方块出发，在**同一 Y 层**内按水平间距 ≤ `link`（默认 `3`）连通扩散出整条轨道的音符盒；种子点可以落在中继器、红石线等非音符盒方块上（自动吸附 3 格内最近的音符盒）。
-- **不串轨** —— 因为限定同一 Y 层，上下叠放的轨道互不连通，不会把别的轨道连进来。
-- **一轨一球** —— 每个音符盒都属于某条轨道，被激活时驱动本轨道唯一的那颗**带淡出拖尾的弹力球彗星**跳到它上表面中心；同一轨道同 tick 多个音符 → 随机取一个。轨道之间互不干扰，球不会卡死或跑到别的轨道。
-- **数量上限** —— 最多选择 **32 条轨道**（= 最多 32 颗弹力球）。
-- **节奏同步** —— 服务端会学习每条轨道内的音符先后顺序，提前预判下一个音符盒并下发，让弹力球跟上歌曲速度。
-- 未选择轨道就执行 `on` 会提示先完成选择。
+- **纯时间轴驱动** —— 模组不再检测音符盒发声、也不反推红石走线；每条链的顺序与间隔由生成器直接给出（`x,y,z,delay`，`delay` 单位为游戏 tick），**第一遍播放就与歌曲完全对齐**。
+- **一链一球** —— 一条链 = 一颗带彗尾的弹力球，落点固定为音符盒上表面中心，链与链之间互不干扰，不会串轨或卡死。
+- **60FPS 轨迹** —— 位置按渲染帧（约 60FPS）重新求值，曲线连续、没有多边形折线感；拖尾按弧长加密补点，形成平滑彗尾。
+- **球体外观** —— 亮核 + 球面外壳光点构成一颗发光小球，尾部由粗到细，像彗星也像《滚动的天空》里的球。
+- **动态跳跃高度** —— `height` 只是**上限**：球会按这一跳的水平距离与间隔在 `[H-2, H]` 之间自动取值（`H ≤ 2` 时固定为 `H`）。
+- 同一锚点重复执行 = 重置该链并从头重播。
+
+**音符盒触发特效**（可选）：开启后，每个音符盒被触发的瞬间，会在它所在位置播放一次指定特效。
+
+```text
+/mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
+/mpe noteblock triggereffect on
+```
+
+参数语法与 `/mpe effect` 完全一致，其中 `~~~` 代表**目标音符盒方块本身**（`~ ~2 ~` = 音符盒正上方 2 格）。
 
 ### 🎨 一种命令，四种颜色
 
@@ -137,8 +143,10 @@ color=rainbow                        # 整体颜色随时间循环（彩虹色�
 | `density <0.01~1>` | 全局像素采样间距（会持久保存） |
 | `text "<文字>" <x> <y> <z> [选项]` | 粒子显示文字 |
 | `effect <类型> <x> <y> <z> [选项]` | 发射粒子特效 |
-| `noteblock select start\|done\|clear\|status` | 选择音符盒轨道（左键点选，不真正破坏方块） |
-| `noteblock on\|off\|status\|set` | 开启 / 管理音符盒弹力球（球数 = 已选轨道数） |
+| `noteblock chain <anchor> <notes> [选项]` | 下发 / 重播一条链（生成器联动） |
+| `noteblock clear [id=<ID>]` | 移除全部链，或移除指定 id 的链 |
+| `noteblock status` | 查看当前存活的链 |
+| `noteblock triggereffect on\|off\|effect <参数>` | 音符盒触发特效开关与参数（复用 `effect` 语法） |
 | `clear [all\|text\|effect\|id=<ID>]` | 清除显示内容 |
 | `autoclear <on\|off>` | 新文字显示前先让旧文字退场 |
 
@@ -168,12 +176,18 @@ gradient=#FF0000,#00FF00 gradient=rainbow color=rainbow force=true
 <summary><b>🎵 音符盒选项</b></summary>
 
 ```text
-# 选择轨道
-select start link=3        # 轨道内相邻音符盒的最大水平间距（1~8）
-select done / select clear / select status
+# 链参数（由生成器写进命令方块）
+chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8     # 音符数据 x,y,z,delay|...，delay 单位为 tick
+trail=24       # 拖尾长度（粒子数，2~256）
+curve=arc      # 竖直起伏 arc(抛物线) | sine(正弦) | line(不弹跳)
+height=3       # 跳跃最大高度（实际在 [H-2, H] 之间动态取值）
+color=rainbow  # 纯色 #RRGGBB 或 rainbow；也可用 gradient=#RRGGBB,#RRGGBB
+linger=40      # 最后一个音符后停留 tick 数（-1 = 常驻）
+force=true     # 跳过距离裁剪
 
-# 开启（球数由已选轨道数决定，无需指定 count）
-selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
+# 音符盒触发特效
+triggereffect on / off
+triggereffect effect wave ~ ~2 ~ duration=4 speed=8 size=2.8 color=#11FFFF
 ```
 
 </details>
@@ -189,10 +203,9 @@ selector=@p radius=16 trail=24 curve=arc|sine|line height=3 force=true
 /mpe effect explosion 100 64 100 size=6 gradient=#FF4500,#FFFFFF
 /mpe effect wave 100 64 100 size=5 speed=3 color=#00FF00
 
-/mpe noteblock select start link=3
-# 左键依次点击每条轨道上的方块后：
-/mpe noteblock select done
-/mpe noteblock on radius=32 trail=24 height=3
+/mpe noteblock chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8|12,0,0,16| curve=arc height=3 color=rainbow
+/mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 size=2.8 color=#11FFFF
+/mpe noteblock triggereffect on
 ```
 
 ---

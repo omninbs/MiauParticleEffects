@@ -54,13 +54,14 @@ public final class TextInstance extends DisplayInstance {
     }
 
     @Override
-    public void spawnParticles(ClientLevel world) {
+    public void spawnParticles(ClientLevel world, float partialTick) {
         if (phase == Phase.DELETED || phase == Phase.PENDING) {
             return;
         }
         if (pixels.isEmpty()) {
             return;
         }
+        this.framePartial = partialTick;
 
         float progress = easedProgress();
         float fadeAlpha = computeFadeAlpha();

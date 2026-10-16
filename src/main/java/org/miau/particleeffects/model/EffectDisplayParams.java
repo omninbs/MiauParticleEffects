@@ -82,6 +82,14 @@ public record EffectDisplayParams(
                 curve, entry, exit, fade, move, newId, force);
     }
 
+    /** 替换位置与 id：供「音符盒触发特效」在目标音符盒位置实例化模板。 */
+    public EffectDisplayParams withPos(Vec3 newPos, String newId) {
+        return new EffectDisplayParams(
+                type, newPos, size, waveSpeed, colorArgb, colorMode, gradientColors, orientation, rotation,
+                durationTicks, enterTicks, exitTicks, delayTicks,
+                curve, entry, exit, fade, move, newId, force);
+    }
+
     public EffectDisplayParams withDelay(int addedTicks) {
         if (addedTicks <= 0) {
             return this;

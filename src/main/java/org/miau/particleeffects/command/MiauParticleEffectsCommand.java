@@ -6,14 +6,13 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 /*? if >=1.21.11 {*/
 import net.minecraft.server.permissions.Permission;
@@ -25,6 +24,7 @@ import org.miau.particleeffects.animation.Easing;
 import org.miau.particleeffects.animation.Easings;
 import org.miau.particleeffects.animation.FadeOption;
 import org.miau.particleeffects.config.ConfigManager;
+import org.miau.particleeffects.config.MiauParticleEffectsConfig;
 import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.ColorMode;
@@ -32,13 +32,13 @@ import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.EffectType;
 import org.miau.particleeffects.model.HorizontalCurve;
 import org.miau.particleeffects.model.MoveSpec;
-import org.miau.particleeffects.model.NoteBlockParams;
 import org.miau.particleeffects.model.Orientation;
 import org.miau.particleeffects.model.RotationSpec;
 import org.miau.particleeffects.model.TextDisplayParams;
+import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainPayload;
 import org.miau.particleeffects.server.MiauParticleEffectsServer;
-import org.miau.particleeffects.server.NoteTrackManager;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -50,7 +50,7 @@ public final class MiauParticleEffectsCommand {
             §e/mpe density <间距>§r 设置全局像素密度(0.01~1.0，越小越清晰)
             §e/mpe text "<文字>" <x> <y> <z> [options]§r 显示文字（可用 § 代码）
             §e/mpe effect <cube|tetra|explosion|wave> <x> <y> <z> [options]§r 附加特效
-            §e/mpe noteblock <on|off|status|set> [options]§r 音符盒弹力球
+            §e/mpe noteblock <chain|clear|status>§r 数据驱动音符盒弹力球
             §e/mpe clear [all|text|effect|id=<ID>]§r 清除显示内容
             §e/mpe autoclear <on|off>§r 新文字显示前自动清除旧文字
             §7提示：直接输入 /mpe <子命令> 可查看该子命令的详细参数列表§r
@@ -134,49 +134,81 @@ public final class MiauParticleEffectsCommand {
             """;
 
     private static final String HELP_NOTEBLOCK = """
-            §6/mpe noteblock <select|on|off|status|set> [options]§r 音符盒弹力球
-            使用顺序：先选择轨道 → 开启。
+            §6/mpe noteblock <chain|clear|status|triggereffect>§r 数据驱动音符盒弹力球
+            生成器在链式结构起点用脉冲命令方块执行 chain，一次下发整条时间轴，
+            模组按数据播放弹力球（纯时间轴，与红石完全解耦）。一条链 = 一颗球。
             子命令：
-              select  选择轨道（见 /mpe help noteblock select）
-              on      开启（弹力球数量 = 已选轨道数，每条轨道一颗球）
-              off     关闭并移除所有弹力球与拖尾
-              status  查看当前参数
-              set     运行中修改参数
-            选项（键=值，on / set 时使用）：
-              selector=   实体选择器 @p/@a/@e/@s/玩家名/UUID
-                          （玩家执行默认=自己；命令方块默认=@p）
-              radius=     检测半径(方块)   默认 16   范围 1~256
-              trail=      拖尾长度(粒子数) 默认 24   范围 2~256
-              curve=      竖直起伏曲线 line / arc / sine   默认 arc
-              height=     跳动最大高度(方块) 默认 3   范围 0.5~64
-              force=      强制粒子显示，不受距离裁剪（可能增加客户端开销）默认 false
-            说明：水平方向为直线飞向目标音符盒；竖直方向按 curve 起伏
-                  （arc=抛物线 / sine=正弦 / line=不弹跳），最高点受 height 限制。
-                  每条轨道一颗弹力球、单独计算，互不串轨；同一轨道同时触发多个音符时
-                  随机取其中一个。服务端会预测本轨的下一个音符盒并提前下发，跟得上歌曲节奏。
+              chain <anchor> <notes> [选项]   下发/重置一条链并开始播放
+              clear [id=<id>]                移除全部链，或移除指定 id 的链
+              status                         查看当前存活的链
+              triggereffect ...              音符盒触发特效（音符盒被触发的瞬间在它那里放特效）
+            chain 参数：
+              <anchor>  锚点。~~~ = 命令方块（或执行者）自身所在方块坐标；或写 x,y,z 绝对方块坐标
+              <notes>   音符数据，格式 x,y,z,delay|x,y,z,delay|...
+                        x,y,z 为相对锚点的整数方块偏移（可为负）；delay 为距上一个音符的
+                        间隔（游戏 tick，非负整数）。末尾多余 | 可省略，空段忽略。
+                        第 0 个音符的 delay 从命令方块执行那一刻算起。
+            选项（键=值，可组合，写在 notes 之后）：
+              trail=     拖尾长度(粒子数) 默认 24   范围 2~256
+              curve=     竖直起伏 line / arc / sine   默认 arc
+              height=    跳动最大高度(方块) 默认 3   范围 0.5~64
+              color=     纯色 #RRGGBB，或 rainbow（整体颜色随时钟循环）  默认按锚点自动取色
+              gradient=  渐变 #RRGGBB,#RRGGBB[,...]，或 rainbow（流动彩虹渐变）
+              force=     强制粒子显示，不受距离裁剪（可能增加客户端开销） 默认 false
+              linger=    最后一个音符后继续停留的 tick 数；-1 = 常驻  默认 40
+            说明：小球落点为音符盒上表面中心（音符盒坐标 +(0.5,1.0,0.5)）；
+                  水平直线飞行，竖直按 curve 起伏（arc=抛物线 / sine=正弦 / line=不弹跳）。
+                  同一锚点再次执行 = 重置该链并从头重播。
             示例：
-              /mpe noteblock select start
-              /mpe noteblock select done
-              /mpe noteblock on radius=32 trail=24 curve=arc height=3
+              /mpe noteblock chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8|12,0,0,16| curve=arc height=3 color=rainbow
+              /mpe noteblock clear
+              /mpe noteblock clear id=1234567
+              /mpe noteblock status
             """;
 
-    private static final String HELP_NOTEBLOCK_SELECT = """
-            §6/mpe noteblock select <start|done|clear|status> [options]§r 选择轨道
+    private static final String HELP_TRIGGER_EFFECT = """
+            §6/mpe noteblock triggereffect <on|off|effect <参数>>§r 音符盒触发特效
+            依据链首命令方块下发的时间轴，得知每个时刻哪个音符盒被触发；
+            开启后，在音符盒被触发的那一刻，于该音符盒位置播放指定特效。
             子命令：
-              start   进入选择模式；随后左键点击每条链式轨道上的任意方块
-                      （不会真的破坏方块），每条轨道点一下即可
-              done    结束选择并识别轨道（之后即可 /mpe noteblock on）
-              clear   清空已记录的选择（保持在选择模式）
-              status  查看选择进度与已识别轨道
-            选项（start 时使用）：
-              link=   同一条轨道内相邻音符盒的最大水平间距  默认 3   范围 1~8
-            规则：轨道 = 同一 Y 层、水平相邻（间距不超过 link）连通的一组音符盒；
-                  上下层不连通，因此不同轨道不会串在一起。
-            上限：最多 32 条轨道（即最多 32 颗弹力球）。
+              on               开启（只对之后的音符生效，不会补播历史音符）
+              off              关闭（默认）
+              effect <参数>    设置特效参数，语法与 /mpe effect 完全一致
+            参数格式：<类型> <x> <y> <z> [选项]
+              <x> <y> <z> 为相对目标音符盒方块的偏移：~~~ 即音符盒方块本身
+                          （例：~ ~2 ~ = 音符盒正上方 2 格；也可写数字偏移）
+              选项与 /mpe effect 相同：size / speed / color / gradient / towards / rotate /
+              duration / enter / exit / delay / curve / in / out / fade / move / id / force
+            默认参数：
+              wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
             示例：
-              /mpe noteblock select start link=3
-              /mpe noteblock select done
+              /mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
+              /mpe noteblock triggereffect effect cube ~ ~1 ~ size=1.5 color=rainbow duration=10
+              /mpe noteblock triggereffect on
+              /mpe noteblock triggereffect off
             """;
+
+    /** 特效类型补全（与 /mpe effect 共用）。 */
+    private static final SuggestionProvider<CommandSourceStack> EFFECT_TYPE_SUGGESTIONS =
+            (ctx, builder) -> SharedSuggestionProvider.suggest(
+                    new String[]{"cube", "tetra", "explosion", "wave"}, builder);
+
+    /** 特效选项补全（与 /mpe effect 共用）。 */
+    private static final String[] EFFECT_OPTION_KEYS = {
+            "size=", "speed=", "color=", "gradient=", "towards=", "rotate=", "duration=", "enter=",
+            "exit=", "delay=", "curve=", "in=", "out=", "fade=", "move=", "id=", "force="};
+
+    private static final SuggestionProvider<CommandSourceStack> EFFECT_OPTION_SUGGESTIONS = (ctx, builder) -> {
+        String input = builder.getRemaining().toLowerCase(Locale.ROOT);
+        int space = input.lastIndexOf(' ');
+        String token = space >= 0 ? input.substring(space + 1) : input;
+        for (String key : EFFECT_OPTION_KEYS) {
+            if (key.startsWith(token)) {
+                builder.suggest(key);
+            }
+        }
+        return builder.buildFuture();
+    };
 
     private static final String HELP_CLEAR = """
             §6/mpe clear [all|text|effect|id=<ID>]§r 清除显示内容
@@ -206,7 +238,7 @@ public final class MiauParticleEffectsCommand {
             case "text" -> HELP_TEXT;
             case "effect" -> HELP_EFFECT;
             case "noteblock", "note", "nb" -> HELP_NOTEBLOCK;
-            case "select" -> HELP_NOTEBLOCK_SELECT;
+            case "triggereffect", "trigger" -> HELP_TRIGGER_EFFECT;
             case "clear" -> HELP_CLEAR;
             case "autoclear" -> HELP_AUTOCLEAR;
             default -> null;
@@ -355,9 +387,11 @@ public final class MiauParticleEffectsCommand {
                     return 1;
                 })
                 .then(Commands.argument("type", StringArgumentType.word())
+                        .suggests(EFFECT_TYPE_SUGGESTIONS)
                         .then(Commands.argument("pos", Vec3Argument.vec3())
                                 .executes(ctx -> executeEffect(ctx, Options.EMPTY))
                                 .then(Commands.argument("options", StringArgumentType.greedyString())
+                                        .suggests(EFFECT_OPTION_SUGGESTIONS)
                                         .executes(ctx -> executeEffect(
                                                 ctx, Options.parse(StringArgumentType.getString(ctx, "options")))))));
     }
@@ -461,186 +495,318 @@ public final class MiauParticleEffectsCommand {
                     Feedback.send(ctx.getSource(), HELP_NOTEBLOCK);
                     return 1;
                 })
-                .then(selectNode())
-                .then(Commands.literal("on")
-                        .executes(ctx -> executeNoteBlockOn(ctx, Options.EMPTY))
-                        .then(Commands.argument("options", StringArgumentType.greedyString())
-                                .executes(ctx -> executeNoteBlockOn(
-                                        ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))))
-                .then(Commands.literal("off").executes(MiauParticleEffectsCommand::executeNoteBlockOff))
-                .then(Commands.literal("status").executes(MiauParticleEffectsCommand::executeNoteBlockStatus))
-                .then(Commands.literal("set")
-                        .executes(ctx -> {
-                            Feedback.send(ctx.getSource(), HELP_NOTEBLOCK);
-                            return 1;
-                        })
-                        .then(Commands.argument("options", StringArgumentType.greedyString())
-                                .executes(ctx -> executeNoteBlockSet(
-                                        ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))));
+                .then(chainNode())
+                .then(clearChainNode())
+                .then(Commands.literal("status").executes(MiauParticleEffectsCommand::executeNoteChainStatus))
+                .then(triggerEffectNode());
     }
 
-    private static LiteralArgumentBuilder<CommandSourceStack> selectNode() {
-        return Commands.literal("select")
+    private static LiteralArgumentBuilder<CommandSourceStack> chainNode() {
+        return Commands.literal("chain")
                 .executes(ctx -> {
-                    Feedback.send(ctx.getSource(), HELP_NOTEBLOCK_SELECT);
+                    Feedback.send(ctx.getSource(), HELP_NOTEBLOCK);
                     return 1;
                 })
-                .then(Commands.literal("start")
-                        .executes(ctx -> executeSelectStart(ctx, Options.EMPTY))
-                        .then(Commands.argument("options", StringArgumentType.greedyString())
-                                .executes(ctx -> executeSelectStart(
-                                        ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))))
-                .then(Commands.literal("done").executes(MiauParticleEffectsCommand::executeSelectDone))
-                .then(Commands.literal("clear").executes(ctx -> {
-                    CommandSourceStack src = ctx.getSource();
-                    ServerPlayer player = src.getPlayer();
-                    if (player == null || !NoteTrackManager.ownsSelection(player, src.getLevel())) {
-                        throw Feedback.error("当前选择模式属于另一名玩家，或尚未开启选择模式");
-                    }
-                    NoteTrackManager.clearSeeds();
-                    Feedback.send(src, "已清空轨道选择（仍在选择模式）");
-                    return 1;
-                }))
-                .then(Commands.literal("status").executes(ctx -> {
-                    CommandSourceStack src = ctx.getSource();
-                    Feedback.send(src, "选择模式：" + (NoteTrackManager.isSelecting() ? "进行中" : "未开启")
-                            + "  已点击种子：" + NoteTrackManager.seedCount() + " / " + NoteTrackManager.MAX_TRACKS
-                            + "  已识别轨道：" + NoteTrackManager.trackCount()
-                            + "（" + NoteTrackManager.totalNoteBlocks() + " 个音符盒）");
-                    return 1;
-                }));
+                // anchor 与 notes 含 ~ 、逗号、竖线等字符，Brigadier 的 word/string 不接受，
+                // 故整段作为 greedyString 收下后在方法内自行按空白切分。
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .executes(ctx -> executeNoteChain(ctx, StringArgumentType.getString(ctx, "args"))));
     }
 
-    private static int executeSelectStart(CommandContext<CommandSourceStack> ctx, Options options)
+    private static LiteralArgumentBuilder<CommandSourceStack> clearChainNode() {
+        return Commands.literal("clear")
+                .executes(ctx -> executeNoteChainClear(ctx, null))
+                .then(Commands.argument("options", StringArgumentType.greedyString())
+                        .executes(ctx -> executeNoteChainClear(ctx, StringArgumentType.getString(ctx, "options"))));
+    }
+
+    /** 音符数量上限：单条命令 32500 字符约合 3000 个音符，这里留足余量同时防住异常数据。 */
+    private static final int MAX_NOTES = 8192;
+
+    private static int executeNoteChain(CommandContext<CommandSourceStack> ctx, String raw)
             throws CommandSyntaxException {
         CommandSourceStack src = ctx.getSource();
-        ServerPlayer player = src.getPlayer();
-        if (player == null) {
-            throw Feedback.error("该命令只能由玩家执行");
+        String[] tokens = raw.trim().split("\\s+");
+        if (tokens.length < 2) {
+            throw Feedback.error("用法：/mpe noteblock chain <anchor> <notes> [选项]（见 /mpe help noteblock）");
         }
-        int link;
+        BlockPos anchor = parseAnchor(src, tokens[0]);
+        List<NoteChainPayload.Note> notes = parseNotes(tokens[1]);
+        String optionsRaw = tokens.length > 2
+                ? String.join(" ", java.util.Arrays.copyOfRange(tokens, 2, tokens.length))
+                : "";
+        NoteChainPayload payload;
         try {
-            options.checkKeys("link");
-            link = options.optInt("link", NoteTrackManager.DEFAULT_LINK, 1, 8);
+            Options options = Options.parse(optionsRaw);
+            payload = buildNoteChain(src, anchor, notes, options);
         } catch (IllegalArgumentException e) {
             throw Feedback.error(e.getMessage());
         }
-        NoteTrackManager.beginSelection(player, src.getLevel(), link);
-        Feedback.send(src, "已进入轨道选择模式（link=" + link
-                + "）：左键点击每条链式轨道上的任意方块（不会真的破坏），"
-                + "每条轨道点一下；选完输入 /mpe noteblock select done");
+        MiauParticleEffectsServer.noteChain(src.getServer(), anchor.asLong(), payload);
+        Feedback.send(src, "已播放音符链 id=" + payload.id() + " 锚点=" + anchor.toShortString()
+                + " 音符=" + notes.size() + " 拖尾=" + payload.trail()
+                + " 曲线=" + payload.curve() + " 高度=" + payload.height()
+                + (payload.linger() < 0 ? "（常驻）" : " linger=" + payload.linger()));
         return 1;
     }
 
-    private static int executeSelectDone(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-        CommandSourceStack src = ctx.getSource();
-        ServerPlayer player = src.getPlayer();
-        if (player == null) {
-            throw Feedback.error("该命令只能由玩家执行");
+    /** 锚点：~~~ 取执行源自身所在方块坐标（命令方块/玩家皆可），或 x,y,z 绝对方块坐标。 */
+    private static BlockPos parseAnchor(CommandSourceStack src, String raw) throws CommandSyntaxException {
+        if (raw.equals("~~~")) {
+            return BlockPos.containing(src.getPosition());
         }
-        if (!NoteTrackManager.ownsSelection(player, src.getLevel())) {
-            throw Feedback.error("当前选择模式属于另一名玩家，或尚未开启选择模式");
+        String[] parts = raw.split(",");
+        if (parts.length != 3) {
+            throw Feedback.error("锚点格式错误：应为 ~~~ 或 x,y,z，收到 '" + raw + "'");
         }
-        int count = NoteTrackManager.finishSelection(src.getLevel(), NoteTrackManager.link());
-        if (count == 0) {
-            throw Feedback.error("未能从所选方块识别出音符盒轨道，请点击音符盒附近（3 格内）的方块后重试");
-        }
-        MiauParticleEffectsServer.refreshNoteBlockTracks(src.getServer());
-        Feedback.send(src, "已识别 " + count + " 条轨道，共 " + NoteTrackManager.totalNoteBlocks()
-                + " 个音符盒；输入 /mpe noteblock on 开启");
-        return 1;
+        return new BlockPos(parseInt(parts[0], "锚点 x"), parseInt(parts[1], "锚点 y"), parseInt(parts[2], "锚点 z"));
     }
 
-    private static int executeNoteBlockOn(CommandContext<CommandSourceStack> ctx, Options options)
+    /** 解析 x,y,z,delay|x,y,z,delay|... ；末尾多余 | 与空段忽略。 */
+    private static List<NoteChainPayload.Note> parseNotes(String raw) throws CommandSyntaxException {
+        List<NoteChainPayload.Note> notes = new ArrayList<>();
+        for (String segment : raw.split("\\|")) {
+            if (segment.isBlank()) {
+                continue;
+            }
+            String[] parts = segment.split(",");
+            if (parts.length != 4) {
+                throw Feedback.error("音符 '" + segment + "' 格式错误：应为 x,y,z,delay");
+            }
+            int delay = parseInt(parts[3], "音符 delay");
+            if (delay < 0) {
+                throw Feedback.error("音符 '" + segment + "' 的 delay 不能为负（单位 tick）");
+            }
+            notes.add(new NoteChainPayload.Note(
+                    parseInt(parts[0], "音符 x"), parseInt(parts[1], "音符 y"),
+                    parseInt(parts[2], "音符 z"), delay));
+            if (notes.size() > MAX_NOTES) {
+                throw Feedback.error("音符数量超过上限 " + MAX_NOTES);
+            }
+        }
+        if (notes.isEmpty()) {
+            throw Feedback.error("至少需要 1 个音符");
+        }
+        return notes;
+    }
+
+    private static NoteChainPayload buildNoteChain(CommandSourceStack src, BlockPos anchor,
+                                                   List<NoteChainPayload.Note> notes, Options o) {
+        o.checkKeys("trail", "curve", "height", "color", "gradient", "force", "linger");
+        int trail = o.optInt("trail", 24, 2, 256);
+        HorizontalCurve curve = o.optEnum("curve", HorizontalCurve::parse, HorizontalCurve.ARC);
+        float height = (float) o.optDouble("height", 3.0, 0.5, 64);
+        boolean force = o.optBool("force", false);
+        // linger 允许 -1（常驻）或任意非负整数。
+        int linger = o.optInt("linger", 40, -1, 72000);
+
+        int color;
+        if (o.has("color")) {
+            String c = o.optString("color", "");
+            color = c.equalsIgnoreCase("rainbow") ? NoteChainPayload.RAINBOW_COLOR : (ColorCodec.parse(c) & 0xFFFFFF);
+        } else {
+            color = MiauParticleEffectsServer.autoChainColor(anchor.asLong());
+        }
+        List<Integer> gradient = List.of();
+        if (o.has("gradient")) {
+            String g = o.optString("gradient", "");
+            if (g.equalsIgnoreCase("rainbow")) {
+                List<Integer> rainbow = new ArrayList<>();
+                for (int i = 0; i < 6; i++) {
+                    rainbow.add(ColorCodec.hsvToRgb(i / 6f));
+                }
+                gradient = List.copyOf(rainbow);
+            } else {
+                gradient = ColorCodec.parseGradient(g);
+            }
+        }
+        return new NoteChainPayload(
+                Long.toString(anchor.asLong()),
+                anchor.getX(), anchor.getY(), anchor.getZ(),
+                List.copyOf(notes), trail, curve.id(), height, force, color, gradient, linger,
+                src.getServer().getTickCount());
+    }
+
+    private static int executeNoteChainClear(CommandContext<CommandSourceStack> ctx, String optionsRaw)
             throws CommandSyntaxException {
         CommandSourceStack src = ctx.getSource();
-        if (NoteTrackManager.trackCount() == 0) {
-            throw Feedback.error("尚未选择轨道，请先执行 /mpe noteblock select start，"
-                    + "左键点击每条轨道后 /mpe noteblock select done");
-        }
-        Entity centerEntity = resolveCenterEntity(src, options.optString("selector", ""));
-        Vec3 center = centerEntity.position();
-        NoteBlockParams base = new NoteBlockParams(
-                center,
-                NoteBlockParams.DEFAULT_RADIUS,
-                NoteBlockParams.DEFAULT_TRAIL,
-                NoteBlockParams.DEFAULT_CURVE,
-                NoteBlockParams.DEFAULT_BALLS,
-                NoteBlockParams.DEFAULT_HEIGHT,
-                options.optBool("force", false));
-        NoteBlockParams params;
-        try {
-            params = parseNoteBlock(center, options, base);
-        } catch (IllegalArgumentException e) {
-            throw Feedback.error(e.getMessage());
-        }
-        MiauParticleEffectsServer.noteBlockOn(src.getServer(), params);
-        Feedback.send(src, "音符盒弹力球已开启：中心=" + fmt(center)
-                + " 半径=" + params.radius() + " 拖尾=" + params.trailCount()
-                + " 曲线=" + params.curve().id() + " 球数=" + params.ballCount()
-                + " 高度=" + params.maxJumpHeight());
-        return 1;
-    }
-
-    private static int executeNoteBlockOff(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-        if (!MiauParticleEffectsServer.noteBlockOff(ctx.getSource().getServer())) {
-            throw Feedback.error("音符盒特效未开启");
-        }
-        Feedback.send(ctx.getSource(), "音符盒弹力球已关闭");
-        return 1;
-    }
-
-    private static int executeNoteBlockStatus(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
-        NoteBlockParams params = MiauParticleEffectsServer.noteBlockStatus();
-        if (params == null) {
-            Feedback.send(ctx.getSource(), "音符盒弹力球当前：关闭（使用 /mpe noteblock on 开启）");
+        if (optionsRaw == null || optionsRaw.isBlank()) {
+            int removed = MiauParticleEffectsServer.noteChainClearAll(src.getServer());
+            Feedback.send(src, "已清除全部音符链（" + removed + " 条）");
             return 1;
         }
-        Feedback.send(ctx.getSource(), "音符盒弹力球当前：开启心=" + fmt(params.center())
-                + " 半径=" + params.radius() + " 拖尾=" + params.trailCount()
-                + " 曲线=" + params.curve().id() + " 球数=" + params.ballCount()
-                + " 高度=" + params.maxJumpHeight());
+        String raw = optionsRaw.trim();
+        if (!raw.toLowerCase(Locale.ROOT).startsWith("id=")) {
+            throw Feedback.error("无效参数 '" + raw + "'，用法：/mpe noteblock clear [id=<id>]");
+        }
+        String id = raw.substring(3).trim();
+        if (id.isEmpty()) {
+            throw Feedback.error("id 不能为空");
+        }
+        if (!MiauParticleEffectsServer.noteChainClear(src.getServer(), id)) {
+            throw Feedback.error("找不到链 id=" + id);
+        }
+        Feedback.send(src, "已清除链 id=" + id);
         return 1;
     }
 
-    private static int executeNoteBlockSet(CommandContext<CommandSourceStack> ctx, Options options)
-            throws CommandSyntaxException {
-        NoteBlockParams current = MiauParticleEffectsServer.noteBlockStatus();
-        if (current == null) {
-            throw Feedback.error("音符盒特效未开启，请先执行 /mpe noteblock on");
+    private static int executeNoteChainStatus(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        List<NoteChainPayload> chains = MiauParticleEffectsServer.noteChains(src.getServer());
+        if (chains.isEmpty()) {
+            Feedback.send(src, "当前没有存活的音符链");
+            return 1;
         }
-        NoteBlockParams params;
+        Feedback.send(src, "当前存活音符链 " + chains.size() + " 条：");
+        for (NoteChainPayload chain : chains) {
+            Feedback.send(src, "  id=" + chain.id() + " 音符=" + chain.notes().size()
+                    + " 锚点=(" + (int) chain.ax() + "," + (int) chain.ay() + "," + (int) chain.az() + ")"
+                    + (chain.linger() < 0 ? " 常驻" : " linger=" + chain.linger()));
+        }
+        return 1;
+    }
+
+    private static int parseInt(String raw, String name) throws CommandSyntaxException {
         try {
-            params = parseNoteBlock(current.center(), options, current);
-        } catch (IllegalArgumentException e) {
-            throw Feedback.error(e.getMessage());
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            throw Feedback.error("参数 '" + name + "' 无效：'" + raw + "'（需为整数）");
         }
-        MiauParticleEffectsServer.noteBlockSet(ctx.getSource().getServer(), params);
-        Feedback.send(ctx.getSource(), "音符盒参数已更新（弹力球回到各自轨道锚点重新开始）");
-        return 1;
-    }
-
-    private static NoteBlockParams parseNoteBlock(Vec3 center, Options o, NoteBlockParams base) {
-        o.checkKeys("selector", "radius", "trail", "curve", "height", "force");
-        float radius = (float) o.optDouble("radius", base.radius(), 1, 256);
-        int trail = o.optInt("trail", base.trailCount(), 2, 256);
-        HorizontalCurve curve = o.optEnum("curve", HorizontalCurve::parse, base.curve());
-        float height = (float) o.optDouble("height", base.maxJumpHeight(), 0.5, 64);
-        boolean force = o.has("force") ? o.optBool("force", base.force()) : base.force();
-        return new NoteBlockParams(center, radius, trail, curve, base.ballCount(), height, force);
-    }
-
-    private static Entity resolveCenterEntity(CommandSourceStack src, String selector) throws CommandSyntaxException {
-        if (selector != null && !selector.isBlank()) {
-            return EntityResolver.resolve(src, selector);
-        }
-        if (src.getEntity() instanceof Player player) {
-            return player;
-        }
-        return EntityResolver.nearestPlayer(src);
     }
 
     // ------------------------------------------------------------------ clear
+
+    // ------------------------------------------------------------------ 音符盒触发特效
+
+    private static LiteralArgumentBuilder<CommandSourceStack> triggerEffectNode() {
+        return Commands.literal("triggereffect")
+                .executes(ctx -> {
+                    Feedback.send(ctx.getSource(), triggerEffectStatusText());
+                    return 1;
+                })
+                .then(Commands.literal("on").executes(ctx -> executeTriggerEffectToggle(ctx, true)))
+                .then(Commands.literal("off").executes(ctx -> executeTriggerEffectToggle(ctx, false)))
+                .then(Commands.literal("effect")
+                        .executes(ctx -> {
+                            Feedback.send(ctx.getSource(), HELP_TRIGGER_EFFECT);
+                            return 1;
+                        })
+                        .then(Commands.argument("type", StringArgumentType.word())
+                                .suggests(EFFECT_TYPE_SUGGESTIONS)
+                                .then(Commands.argument("pos", Vec3Argument.vec3())
+                                        .executes(ctx -> executeTriggerEffectSpec(ctx, Options.EMPTY))
+                                        .then(Commands.argument("options", StringArgumentType.greedyString())
+                                                .suggests(EFFECT_OPTION_SUGGESTIONS)
+                                                .executes(ctx -> executeTriggerEffectSpec(
+                                                        ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))))));
+    }
+
+    private static String triggerEffectStatusText() {
+        boolean enabled = MiauParticleEffectsServer.noteTriggerEffectEnabled();
+        return "§6音符盒触发特效§r：" + (enabled ? "§a已开启" : "§c已关闭")
+                + "\n§7当前参数：§f" + ConfigManager.get().noteTriggerEffectSpec
+                + "\n\n" + HELP_TRIGGER_EFFECT;
+    }
+
+    private static int executeTriggerEffectToggle(CommandContext<CommandSourceStack> ctx, boolean enabled)
+            throws CommandSyntaxException {
+        CommandSourceStack src = ctx.getSource();
+        if (enabled && !MiauParticleEffectsServer.hasNoteTriggerSpec()) {
+            throw Feedback.error("尚未设置触发特效参数，请先执行 /mpe noteblock triggereffect effect <参数>");
+        }
+        MiauParticleEffectsServer.setNoteTriggerEffect(src.getServer(), enabled);
+        ConfigManager.get().noteTriggerEffect = enabled;
+        ConfigManager.save();
+        Feedback.send(src, enabled ? "已开启音符盒触发特效" : "已关闭音符盒触发特效");
+        return 1;
+    }
+
+    private static int executeTriggerEffectSpec(CommandContext<CommandSourceStack> ctx, Options options)
+            throws CommandSyntaxException {
+        CommandSourceStack src = ctx.getSource();
+        EffectType type = EffectType.parse(StringArgumentType.getString(ctx, "type"));
+        if (type == null) {
+            throw Feedback.error("未知特效类型，可选：cube / tetra / explosion / wave");
+        }
+        // 把执行源临时移到原点，这样 ~~~ 解析出来就是「相对目标音符盒方块」的偏移量。
+        Vec3 offset = Vec3Argument.getCoordinates(ctx, "pos").getPosition(src.withPosition(Vec3.ZERO));
+        EffectDisplayParams template;
+        try {
+            template = parseEffect(type, Vec3.ZERO, options);
+        } catch (IllegalArgumentException e) {
+            throw Feedback.error(e.getMessage());
+        }
+        String optionsRaw;
+        try {
+            optionsRaw = StringArgumentType.getString(ctx, "options");
+        } catch (IllegalArgumentException e) {
+            optionsRaw = "";
+        }
+        String spec = buildTriggerSpecText(type, offset, optionsRaw);
+        MiauParticleEffectsServer.setNoteTriggerSpec(template, offset);
+        ConfigManager.get().noteTriggerEffectSpec = spec;
+        ConfigManager.save();
+        Feedback.send(src, "音符盒触发特效已设为：" + spec + "（~~~ 指向音符盒方块）");
+        return 1;
+    }
+
+    private static String buildTriggerSpecText(EffectType type, Vec3 offset, String optionsRaw) {
+        String pos = formatCoord(offset.x) + " " + formatCoord(offset.y) + " " + formatCoord(offset.z);
+        String rest = optionsRaw == null ? "" : optionsRaw.trim();
+        return (type.id() + " " + pos + (rest.isEmpty() ? "" : " " + rest)).trim();
+    }
+
+    private static String formatCoord(double value) {
+        return value == Math.rint(value) && Math.abs(value) < 1.0e9
+                ? Long.toString((long) value)
+                : Double.toString(value);
+    }
+
+    /** 从配置中的参数原文恢复「音符盒触发特效」模板；配置损坏时退回默认参数。 */
+    public static void loadTriggerSpec(String raw) {
+        try {
+            applyTriggerSpec(raw);
+        } catch (RuntimeException e) {
+            applyTriggerSpec(MiauParticleEffectsConfig.DEFAULT_NOTE_TRIGGER_SPEC);
+        }
+    }
+
+    private static void applyTriggerSpec(String raw) {
+        String[] tokens = raw == null ? new String[0] : raw.trim().split("\\s+");
+        if (tokens.length < 4) {
+            throw new IllegalArgumentException("参数不完整，应为：<类型> <x> <y> <z> [选项]");
+        }
+        EffectType type = EffectType.parse(tokens[0]);
+        if (type == null) {
+            throw new IllegalArgumentException("未知特效类型 '" + tokens[0] + "'");
+        }
+        Vec3 offset = new Vec3(parseRelativeCoord(tokens[1]),
+                parseRelativeCoord(tokens[2]), parseRelativeCoord(tokens[3]));
+        String optionsRaw = tokens.length > 4
+                ? String.join(" ", java.util.Arrays.copyOfRange(tokens, 4, tokens.length))
+                : "";
+        MiauParticleEffectsServer.setNoteTriggerSpec(
+                parseEffect(type, Vec3.ZERO, Options.parse(optionsRaw)), offset);
+    }
+
+    /** 相对坐标解析：~ 或 ~N 表示相对音符盒方块的偏移（~ = 0），纯数字按原值。 */
+    private static double parseRelativeCoord(String raw) {
+        String s = raw.trim();
+        if (s.isEmpty() || s.equals("~")) {
+            return 0;
+        }
+        if (s.startsWith("~")) {
+            s = s.substring(1);
+            if (s.isEmpty()) {
+                return 0;
+            }
+        }
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("坐标 '" + raw + "' 不是合法数值");
+        }
+    }
 
     private static LiteralArgumentBuilder<CommandSourceStack> clearNode() {
         return Commands.literal("clear")
@@ -770,10 +936,6 @@ public final class MiauParticleEffectsCommand {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("参数 '" + name + "' 无效: '" + raw + "'");
         }
-    }
-
-    private static String fmt(Vec3 v) {
-        return String.format(Locale.ROOT, "(%.1f, %.1f, %.1f)", v.x, v.y, v.z);
     }
 
     private static boolean isChunkLoaded(ServerLevel world, Vec3 pos) {

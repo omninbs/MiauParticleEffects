@@ -35,6 +35,8 @@ public abstract class DisplayInstance {
 
     protected int tickCounter = 0;
     protected Phase phase = Phase.PENDING;
+    /** 本次生成粒子所用到的帧间插值系数（tick 驱动时为 0）。 */
+    protected float framePartial = 0f;
 
     protected DisplayInstance(Vec3 pos, Orientation orientation,
                                int durationTicks, int enterTicks, int exitTicks, int delayTicks,
@@ -112,7 +114,11 @@ public abstract class DisplayInstance {
         }
     }
 
-    protected float phaseProgress() {
+    /**
+     * 阶段进度。partialTick 为当前渲染帧相对上一个 tick 的插值系数，
+     * 使动画在渲染帧上连续推进（约 60FPS），而不是每 tick 跳一格。
+     */
+    protected float phaseProgress(float partialTick) {
         int duration = switch (phase) {
             case ENTER -> enterTicks;
             case DISPLAY -> durationTicks;
@@ -122,11 +128,28 @@ public abstract class DisplayInstance {
         if (duration <= 0) {
             return 1f;
         }
-        return Math.min(1f, (float) tickCounter / duration);
+        return Math.min(1f, (tickCounter + partialTick) / duration);
+    }
+
+    protected float phaseProgress() {
+        return phaseProgress(0f);
+    }
+
+    protected float easedProgress(float partialTick) {
+        return curve.apply(phaseProgress(partialTick));
     }
 
     protected float easedProgress() {
-        return curve.apply(phaseProgress());
+        return easedProgress(0f);
+    }
+
+    /**
+     * 是否按渲染帧率生成粒子：
+     * true  → 由渲染帧回调驱动（可拿到插值系数，动画/轨迹更平滑，按 60FPS 生成）；
+     * false → 仍由 20Hz 的客户端 tick 驱动。
+     */
+    public boolean frameDriven() {
+        return false;
     }
 
     protected Vec3 computeMoveOffset(int currentTick, float partialTick) {
@@ -156,15 +179,18 @@ public abstract class DisplayInstance {
         }
         float alpha = 1f;
         if (phase == Phase.ENTER && fade.fadeIn()) {
-            alpha = easedProgress();
+            alpha = easedProgress(framePartial);
         } else if (phase == Phase.EXIT && fade.fadeOut()) {
-            alpha = 1f - easedProgress();
+            alpha = 1f - easedProgress(framePartial);
         }
         return alpha;
     }
 
     /**
-     * 。tick 生成粒子到世界。子类根据当前阶段进度生成粒子（end_rod 粒子）。     *
-     * @param world 客户端世界（用于 addParticleClient。     */
-    public abstract void spawnParticles(ClientLevel world);
+     * 生成粒子到世界。子类根据当前阶段进度生成粒子（end_rod 粒子）。
+     *
+     * @param world       客户端世界
+     * @param partialTick 帧间插值系数（由 {@link #frameDriven()} 决定是否有效）
+     */
+    public abstract void spawnParticles(ClientLevel world, float partialTick);
 }

@@ -4,7 +4,6 @@
   "package": "org.miau.particleeffects.mixin",
   "compatibilityLevel": "${java}",
   "mixins": [
-    "NoteBlockMixin"
   ],
   "injectors": {
     "defaultRequire": 1

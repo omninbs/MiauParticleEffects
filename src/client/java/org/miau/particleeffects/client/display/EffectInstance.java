@@ -142,13 +142,19 @@ public final class EffectInstance extends DisplayInstance {
     }
 
     @Override
-    public void spawnParticles(ClientLevel world) {
+    public boolean frameDriven() {
+        return true;
+    }
+
+    @Override
+    public void spawnParticles(ClientLevel world, float partialTick) {
         if (phase == Phase.DELETED || phase == Phase.PENDING) {
             return;
         }
-        float progress = easedProgress();
+        this.framePartial = partialTick;
+        float progress = easedProgress(partialTick);
         float fadeAlpha = computeFadeAlpha();
-        Vec3 moveOffset = computeMoveOffset(tickCounter, 0f);
+        Vec3 moveOffset = computeMoveOffset(tickCounter, partialTick);
 
         AnimationSet activeAnim = phase == Phase.ENTER ? entryAnim
                 : phase == Phase.EXIT ? exitAnim
@@ -221,7 +227,7 @@ public final class EffectInstance extends DisplayInstance {
         if (fadeAlpha < 0.05f) {
             return;
         }
-        Quaternionf rotation = computeOrientation().mul(computeSpin(0f), new Quaternionf());
+        Quaternionf rotation = computeOrientation().mul(computeSpin(framePartial), new Quaternionf());
         for (Vec3 p : basePoints) {
             Vector3f v = new Vector3f((float) p.x, (float) p.y, (float) p.z).rotate(rotation);
             Vec3 worldPos = origin.add(
@@ -265,15 +271,15 @@ public final class EffectInstance extends DisplayInstance {
         if (fadeAlpha < 0.05f) {
             return;
         }
-        Quaternionf rotation = computeOrientation().mul(computeSpin(0f), new Quaternionf());
+        Quaternionf rotation = computeOrientation().mul(computeSpin(framePartial), new Quaternionf());
         // speed：展开速度（方块/秒），默认已由命令层按“2 秒展开到最大”折算。
         float speedPerTick = Math.max(0.005f, params.waveSpeed() / 20f);
         int expandTicks = (int) Math.ceil(params.size() / speedPerTick);
         if (expandTicks < 1) {
             expandTicks = 1;
         }
-        int elapsed = cumulativeSpanTicks();
-        float t = Math.min(1f, (float) elapsed / expandTicks);
+        float elapsed = cumulativeSpanTicks() + framePartial;
+        float t = Math.min(1f, elapsed / expandTicks);
         float radius = params.size() * t;
         float gradientT = Math.min(1f, radius / params.size());
 
