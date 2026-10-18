@@ -4,6 +4,10 @@
   "package": "org.miau.particleeffects.mixin.client",
   "compatibilityLevel": "${java}",
   "client": [
+    "ParticleAccessor",
+    "ParticleEngineInvoker",
+    "ParticleEngineMixin",
+    "ParticleMixin"
   ],
   "injectors": {
     "defaultRequire": 1

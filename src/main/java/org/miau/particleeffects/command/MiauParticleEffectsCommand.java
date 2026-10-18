@@ -35,6 +35,7 @@ import org.miau.particleeffects.model.MoveSpec;
 import org.miau.particleeffects.model.Orientation;
 import org.miau.particleeffects.model.RotationSpec;
 import org.miau.particleeffects.model.TextDisplayParams;
+import org.miau.particleeffects.exparticle.command.ExParticleCommand;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainPayload;
 import org.miau.particleeffects.server.MiauParticleEffectsServer;
 
@@ -53,6 +54,7 @@ public final class MiauParticleEffectsCommand {
             §e/mpe noteblock <chain|clear|status>§r 数据驱动音符盒弹力球
             §e/mpe clear [all|text|effect|id=<ID>]§r 清除显示内容
             §e/mpe autoclear <on|off>§r 新文字显示前自动清除旧文字
+            §e/mpe particleex <子命令>§r 表达式驱动的粒子系统（normal/parameter/image/group 等）
             §7提示：直接输入 /mpe <子命令> 可查看该子命令的详细参数列表§r
             """;
 
@@ -108,7 +110,7 @@ public final class MiauParticleEffectsCommand {
               <类型>  cube(空心正方体) / tetra(空心四面体)
                      / explosion(宇宙爆炸) / wave(水波)
               <x> <y> <z>  特效位置（绝对坐标）
-            选项（键=值，可组合）：
+            选项（键=值，可组合；§c wave 仅认 size/speed/id§r）：
               size=      尺寸     默认 cube/tetra:2, explosion:6, wave:5  范围 0.05~256
               speed=     展开速度(方块/秒)  仅 wave 有效，默认自动（2 秒展开到最大）
               color=     颜色 #RRGGBB / 颜色名  默认 #FFFFFF
@@ -127,10 +129,14 @@ public final class MiauParticleEffectsCommand {
               move=      dx,dy,dz,时长,曲线   显示期位移
               id=        自定义ID
               force=     强制粒子显示，不受距离裁剪（可能增加客户端开销） 默认 false
+            §b wave 说明§r：物理化水波——水平面 2D 空心圆扩散
+              半径从 0 扩大到 size，速度由 speed 决定；颜色固定水色
+              振幅按 1/√r 衰减（能量守恒），含多个尾随波纹，接近最大半径时淡出
             示例：
               /mpe effect cube 100 64 100 size=2 color=#00FFFF rotate=0,1,0,3
               /mpe effect explosion 100 64 100 size=6 color=#FF4500 fade=out
-              /mpe effect wave 100 64 100 size=5 color=#00FF00
+              /mpe effect wave 100 64 100 size=5
+              /mpe effect wave 100 64 100 size=8 speed=4 id=big-wave
             """;
 
     private static final String HELP_NOTEBLOCK = """
@@ -167,23 +173,30 @@ public final class MiauParticleEffectsCommand {
             """;
 
     private static final String HELP_TRIGGER_EFFECT = """
-            §6/mpe noteblock triggereffect <on|off|effect <参数>>§r 音符盒触发特效
+            §6/mpe noteblock triggereffect <on|off|effect <add|list|remove>>§r 音符盒触发特效
             依据链首命令方块下发的时间轴，得知每个时刻哪个音符盒被触发；
-            开启后，在音符盒被触发的那一刻，于该音符盒位置播放指定特效。
+            开启后，在音符盒被触发的那一刻，于该音符盒位置播放全部已配置的特效。
             子命令：
-              on               开启（只对之后的音符生效，不会补播历史音符）
-              off              关闭（默认）
-              effect <参数>    设置特效参数，语法与 /mpe effect 完全一致
+              on                          开启（只对之后的音符生效，不会补播历史音符）
+              off                         关闭（默认）
+              effect add <参数>           追加一条特效（可添加多条，全部同时播放）
+              effect list                 列出已配置的特效及其 id
+              effect remove <id>          按 id 移除一条特效
+              effect remove               清空全部特效
             参数格式：<类型> <x> <y> <z> [选项]
               <x> <y> <z> 为相对目标音符盒方块的偏移：~~~ 即音符盒方块本身
                           （例：~ ~2 ~ = 音符盒正上方 2 格；也可写数字偏移）
               选项与 /mpe effect 相同：size / speed / color / gradient / towards / rotate /
               duration / enter / exit / delay / curve / in / out / fade / move / id / force
-            默认参数：
-              wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
+              §c（wave 仅认 size/speed/id，颜色固定水色）§r
+            默认参数（首次启动时自带一条）：
+              wave ~ ~2 ~ size=2.8 speed=8
             示例：
-              /mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
-              /mpe noteblock triggereffect effect cube ~ ~1 ~ size=1.5 color=rainbow duration=10
+              /mpe noteblock triggereffect effect add wave ~ ~2 ~ size=2.8 speed=8
+              /mpe noteblock triggereffect effect add cube ~ ~1 ~ size=1.5 color=rainbow duration=10
+              /mpe noteblock triggereffect effect list
+              /mpe noteblock triggereffect effect remove fx1
+              /mpe noteblock triggereffect effect remove
               /mpe noteblock triggereffect on
               /mpe noteblock triggereffect off
             """;
@@ -192,6 +205,9 @@ public final class MiauParticleEffectsCommand {
     private static final SuggestionProvider<CommandSourceStack> EFFECT_TYPE_SUGGESTIONS =
             (ctx, builder) -> SharedSuggestionProvider.suggest(
                     new String[]{"cube", "tetra", "explosion", "wave"}, builder);
+
+    /** 水波固定颜色：淡蓝色（水色）。 */
+    private static final int WAVE_COLOR = 0x3F77E6FF;
 
     /** 特效选项补全（与 /mpe effect 共用）。 */
     private static final String[] EFFECT_OPTION_KEYS = {
@@ -232,6 +248,27 @@ public final class MiauParticleEffectsCommand {
               /mpe autoclear on
             """;
 
+    private static final String HELP_PARTICLEEX = """
+            §6/mpe particleex <子命令>§r 表达式驱动的粒子系统
+            子命令：
+              functionlist <函数表>         列出表达式可用的数学函数
+              normal <粒子> <x> <y> <z> <颜色4> <速度3> <范围3> <数量> [存活] [速度表达式] [速度步长] [分组]
+              conditional ... <表达式> ...  在立方体范围内按表达式筛选生成
+              parameter / polarparameter / tickparameter / tickpolarparameter
+              rgbaparameter / rgbapolarparameter / rgbatickparameter / rgbatickpolarparameter
+                                           按参数 t 生成轨迹，tick 版分帧生成，rgba 版颜色也由表达式给出
+              image <粒子> <x> <y> <z> <图片> [缩放] [x旋转] [y旋转] [z旋转] [翻转] [dpb] [速度3] [存活]
+              imagematrix ... <矩阵>       用 4x4 矩阵变换图片
+              group remove <分组> [表达式] [位置]
+              group change <parameter|speedexpression> <分组> <表达式> [条件表达式] [位置]
+              clearparticle                清空所有表达式粒子
+              clearcache                   清空图片缓存
+            说明：
+              颜色4 写成「r g b a」（0~1）；速度3 / 范围3 写成「x y z」；角度只能是 90 的倍数
+              表达式示例：x,y=t,sin(t)   s1,s2,dis=t*10,t*PI/20,1
+              图片放在客户端 ./particleImages 目录
+            """;
+
     private static String subHelp(String sub) {
         return switch (sub) {
             case "density" -> HELP_DENSITY;
@@ -241,6 +278,7 @@ public final class MiauParticleEffectsCommand {
             case "triggereffect", "trigger" -> HELP_TRIGGER_EFFECT;
             case "clear" -> HELP_CLEAR;
             case "autoclear" -> HELP_AUTOCLEAR;
+            case "particleex", "ex" -> HELP_PARTICLEEX;
             default -> null;
         };
     }
@@ -273,6 +311,7 @@ public final class MiauParticleEffectsCommand {
                 .then(noteblockNode())
                 .then(clearNode())
                 .then(autoclearNode())
+                .then(ExParticleCommand.node())
                 .executes(ctx -> {
                     Feedback.send(ctx.getSource(), HELP_OVERVIEW);
                     return 1;
@@ -420,6 +459,26 @@ public final class MiauParticleEffectsCommand {
     }
 
     private static EffectDisplayParams parseEffect(EffectType type, Vec3 pos, Options o) {
+        // wave 走简化分支：只保留半径(size)、速度(speed)、id，其余参数一律不解析。
+        // 颜色固定为水色，不做朝向/旋转/动画/位移等复杂控制。
+        if (type == EffectType.WAVE) {
+            o.checkKeys("size", "speed", "id");
+            float size = (float) o.optDouble("size", 5.0, 0.05, 256);
+            float waveSpeed = o.has("speed")
+                    ? (float) o.optDouble("speed", 2.0, 0.1, 1024)
+                    : size / 2.0f;
+            String id = o.optString("id", "");
+            // 水波固定参数：水色、无朝向/旋转、duration 按「扩散到最大半径所需时间 + 淡出」自动计算
+            int expandTicks = (int) Math.ceil(size / Math.max(0.005, waveSpeed / 20f));
+            int duration = Math.max(expandTicks, 2);
+            return new EffectDisplayParams(
+                    type, pos, size, waveSpeed, WAVE_COLOR, ColorMode.SOLID, List.of(),
+                    new Orientation(0f, 0f, 0f), null,
+                    duration, 0, Math.max(2, duration / 4), 0,
+                    Easings.EASE_OUT, AnimationSet.EMPTY, AnimationSet.EMPTY,
+                    FadeOption.NONE, null,
+                    id.isBlank() ? null : id, false);
+        }
         o.checkKeys("size", "speed", "color", "gradient", "force", "towards", "rotate", "duration", "enter", "exit", "delay",
                 "curve", "in", "out", "fade", "move", "id");
         double defaultSize = switch (type) {
@@ -428,13 +487,7 @@ public final class MiauParticleEffectsCommand {
             case WAVE -> 5.0;
         };
         float size = (float) o.optDouble("size", defaultSize, 0.05, 256);
-        // speed 仅对 wave 有效：展开速度（方块/秒），默认按 2 秒展开到最大自动计算。
         float waveSpeed = 0f;
-        if (type == EffectType.WAVE) {
-            waveSpeed = o.has("speed")
-                    ? (float) o.optDouble("speed", 2.0, 0.1, 1024)
-                    : size / 2.0f;
-        }
         ColorSpec cs = resolveColorSpec(o);
         Orientation orientation = o.has("towards") ? parseTowards(o.optString("towards", ""))
                 : new Orientation(0f, 0f, 0f);
@@ -691,28 +744,52 @@ public final class MiauParticleEffectsCommand {
                             Feedback.send(ctx.getSource(), HELP_TRIGGER_EFFECT);
                             return 1;
                         })
-                        .then(Commands.argument("type", StringArgumentType.word())
-                                .suggests(EFFECT_TYPE_SUGGESTIONS)
-                                .then(Commands.argument("pos", Vec3Argument.vec3())
-                                        .executes(ctx -> executeTriggerEffectSpec(ctx, Options.EMPTY))
-                                        .then(Commands.argument("options", StringArgumentType.greedyString())
-                                                .suggests(EFFECT_OPTION_SUGGESTIONS)
-                                                .executes(ctx -> executeTriggerEffectSpec(
-                                                        ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))))));
+                        .then(Commands.literal("add")
+                                .then(Commands.argument("type", StringArgumentType.word())
+                                        .suggests(EFFECT_TYPE_SUGGESTIONS)
+                                        .then(Commands.argument("pos", Vec3Argument.vec3())
+                                                .executes(ctx -> executeTriggerEffectAdd(ctx, Options.EMPTY))
+                                                .then(Commands.argument("options", StringArgumentType.greedyString())
+                                                        .suggests(EFFECT_OPTION_SUGGESTIONS)
+                                                        .executes(ctx -> executeTriggerEffectAdd(
+                                                                ctx, Options.parse(StringArgumentType.getString(ctx, "options"))))))))
+                        .then(Commands.literal("list").executes(ctx -> {
+                            executeTriggerEffectList(ctx);
+                            return 1;
+                        }))
+                        .then(Commands.literal("remove")
+                                .executes(ctx -> executeTriggerEffectRemoveAll(ctx))
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .suggests(TRIGGER_ID_SUGGESTIONS)
+                                        .executes(ctx -> executeTriggerEffectRemove(ctx)))));
     }
+
+    /** 已配置触发特效的 id 补全。 */
+    private static final SuggestionProvider<CommandSourceStack> TRIGGER_ID_SUGGESTIONS =
+            (ctx, builder) -> SharedSuggestionProvider.suggest(
+                    MiauParticleEffectsServer.noteTriggerSpecs().stream()
+                            .map(MiauParticleEffectsServer.TriggerSpec::id)
+                            .toList(),
+                    builder);
 
     private static String triggerEffectStatusText() {
         boolean enabled = MiauParticleEffectsServer.noteTriggerEffectEnabled();
-        return "§6音符盒触发特效§r：" + (enabled ? "§a已开启" : "§c已关闭")
-                + "\n§7当前参数：§f" + ConfigManager.get().noteTriggerEffectSpec
-                + "\n\n" + HELP_TRIGGER_EFFECT;
+        List<MiauParticleEffectsServer.TriggerSpec> specs = MiauParticleEffectsServer.noteTriggerSpecs();
+        StringBuilder sb = new StringBuilder("§6音符盒触发特效§r：")
+                .append(enabled ? "§a已开启" : "§c已关闭")
+                .append("\n§7已配置特效：§f").append(specs.size()).append(" 条");
+        for (MiauParticleEffectsServer.TriggerSpec spec : specs) {
+            sb.append("\n  §e").append(spec.id()).append("§7: §f").append(spec.specText());
+        }
+        sb.append("\n\n").append(HELP_TRIGGER_EFFECT);
+        return sb.toString();
     }
 
     private static int executeTriggerEffectToggle(CommandContext<CommandSourceStack> ctx, boolean enabled)
             throws CommandSyntaxException {
         CommandSourceStack src = ctx.getSource();
         if (enabled && !MiauParticleEffectsServer.hasNoteTriggerSpec()) {
-            throw Feedback.error("尚未设置触发特效参数，请先执行 /mpe noteblock triggereffect effect <参数>");
+            throw Feedback.error("尚未配置触发特效，请先执行 /mpe noteblock triggereffect effect add <参数>");
         }
         MiauParticleEffectsServer.setNoteTriggerEffect(src.getServer(), enabled);
         ConfigManager.get().noteTriggerEffect = enabled;
@@ -721,7 +798,7 @@ public final class MiauParticleEffectsCommand {
         return 1;
     }
 
-    private static int executeTriggerEffectSpec(CommandContext<CommandSourceStack> ctx, Options options)
+    private static int executeTriggerEffectAdd(CommandContext<CommandSourceStack> ctx, Options options)
             throws CommandSyntaxException {
         CommandSourceStack src = ctx.getSource();
         EffectType type = EffectType.parse(StringArgumentType.getString(ctx, "type"));
@@ -742,12 +819,89 @@ public final class MiauParticleEffectsCommand {
         } catch (IllegalArgumentException e) {
             optionsRaw = "";
         }
-        String spec = buildTriggerSpecText(type, offset, optionsRaw);
-        MiauParticleEffectsServer.setNoteTriggerSpec(template, offset);
-        ConfigManager.get().noteTriggerEffectSpec = spec;
+        String specText = buildTriggerSpecText(type, offset, optionsRaw);
+
+        MiauParticleEffectsConfig config = ConfigManager.get();
+        migrateLegacyTriggerSpec(config);
+        String id = nextTriggerId(config);
+        config.noteTriggerEffectSpecs.add(
+                new MiauParticleEffectsConfig.NoteTriggerSpec(id, specText));
+        MiauParticleEffectsServer.addNoteTriggerSpec(
+                new MiauParticleEffectsServer.TriggerSpec(id, template, offset, specText));
         ConfigManager.save();
-        Feedback.send(src, "音符盒触发特效已设为：" + spec + "（~~~ 指向音符盒方块）");
+
+        Feedback.send(src, "已添加音符盒触发特效 §e" + id + "§r：" + specText
+                + "（共 " + config.noteTriggerEffectSpecs.size() + " 条）");
         return 1;
+    }
+
+    private static void executeTriggerEffectList(CommandContext<CommandSourceStack> ctx) {
+        List<MiauParticleEffectsServer.TriggerSpec> specs = MiauParticleEffectsServer.noteTriggerSpecs();
+        if (specs.isEmpty()) {
+            Feedback.send(ctx.getSource(),
+                    "当前没有配置触发特效，使用 /mpe noteblock triggereffect effect add <参数> 添加");
+            return;
+        }
+        Feedback.send(ctx.getSource(), "已配置触发特效 " + specs.size() + " 条：");
+        for (MiauParticleEffectsServer.TriggerSpec spec : specs) {
+            Feedback.send(ctx.getSource(), "  §e" + spec.id() + "§r: " + spec.specText());
+        }
+    }
+
+    private static int executeTriggerEffectRemove(CommandContext<CommandSourceStack> ctx)
+            throws CommandSyntaxException {
+        CommandSourceStack src = ctx.getSource();
+        String id = StringArgumentType.getString(ctx, "id");
+        MiauParticleEffectsConfig config = ConfigManager.get();
+        migrateLegacyTriggerSpec(config);
+        boolean removedFromConfig = config.noteTriggerEffectSpecs.removeIf(entry -> id.equals(entry.id));
+        boolean removedFromServer = MiauParticleEffectsServer.removeNoteTriggerSpec(id);
+        if (!removedFromConfig && !removedFromServer) {
+            throw Feedback.error("找不到触发特效 id=" + id);
+        }
+        ConfigManager.save();
+        Feedback.send(src, "已移除触发特效 §e" + id + "§r（剩余 "
+                + MiauParticleEffectsServer.noteTriggerSpecs().size() + " 条）");
+        return 1;
+    }
+
+    private static int executeTriggerEffectRemoveAll(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        MiauParticleEffectsConfig config = ConfigManager.get();
+        config.noteTriggerEffectSpecs.clear();
+        config.noteTriggerEffectSpec = "";
+        MiauParticleEffectsServer.clearNoteTriggerSpecs();
+        ConfigManager.save();
+        Feedback.send(src, "已清空全部音符盒触发特效");
+        return 1;
+    }
+
+    /** 生成下一个未被占用的特效 id（fx1、fx2……）。 */
+    private static String nextTriggerId(MiauParticleEffectsConfig config) {
+        int index = 1;
+        while (true) {
+            String candidate = "fx" + index;
+            boolean used = config.noteTriggerEffectSpecs.stream()
+                    .anyMatch(entry -> candidate.equals(entry.id));
+            if (!used) {
+                return candidate;
+            }
+            index++;
+        }
+    }
+
+    /** 把旧版单条参数迁移为列表中的一条；迁移后置空旧字段，保证「清空全部」重启后仍为空。 */
+    private static void migrateLegacyTriggerSpec(MiauParticleEffectsConfig config) {
+        if (!config.noteTriggerEffectSpecs.isEmpty()) {
+            return;
+        }
+        String legacy = config.noteTriggerEffectSpec;
+        if (legacy == null || legacy.isBlank()) {
+            return;
+        }
+        config.noteTriggerEffectSpecs.add(
+                new MiauParticleEffectsConfig.NoteTriggerSpec("default", legacy.trim()));
+        config.noteTriggerEffectSpec = "";
     }
 
     private static String buildTriggerSpecText(EffectType type, Vec3 offset, String optionsRaw) {
@@ -762,17 +916,26 @@ public final class MiauParticleEffectsCommand {
                 : Double.toString(value);
     }
 
-    /** 从配置中的参数原文恢复「音符盒触发特效」模板；配置损坏时退回默认参数。 */
-    public static void loadTriggerSpec(String raw) {
-        try {
-            applyTriggerSpec(raw);
-        } catch (RuntimeException e) {
-            applyTriggerSpec(MiauParticleEffectsConfig.DEFAULT_NOTE_TRIGGER_SPEC);
+    /** 从配置中的参数原文恢复「音符盒触发特效」模板列表；单条损坏时跳过该条。 */
+    public static void loadTriggerSpecs(MiauParticleEffectsConfig config) {
+        migrateLegacyTriggerSpec(config);
+        List<MiauParticleEffectsServer.TriggerSpec> specs = new ArrayList<>();
+        for (MiauParticleEffectsConfig.NoteTriggerSpec entry : config.noteTriggerEffectSpecs) {
+            if (entry == null || entry.spec == null || entry.spec.isBlank()) {
+                continue;
+            }
+            String id = entry.id == null || entry.id.isBlank() ? "default" : entry.id;
+            try {
+                specs.add(parseTriggerSpec(id, entry.spec));
+            } catch (RuntimeException e) {
+                // 单条配置损坏时跳过，不影响其它条目
+            }
         }
+        MiauParticleEffectsServer.setNoteTriggerSpecs(specs);
     }
 
-    private static void applyTriggerSpec(String raw) {
-        String[] tokens = raw == null ? new String[0] : raw.trim().split("\\s+");
+    private static MiauParticleEffectsServer.TriggerSpec parseTriggerSpec(String id, String raw) {
+        String[] tokens = raw.trim().split("\\s+");
         if (tokens.length < 4) {
             throw new IllegalArgumentException("参数不完整，应为：<类型> <x> <y> <z> [选项]");
         }
@@ -785,8 +948,8 @@ public final class MiauParticleEffectsCommand {
         String optionsRaw = tokens.length > 4
                 ? String.join(" ", java.util.Arrays.copyOfRange(tokens, 4, tokens.length))
                 : "";
-        MiauParticleEffectsServer.setNoteTriggerSpec(
-                parseEffect(type, Vec3.ZERO, Options.parse(optionsRaw)), offset);
+        EffectDisplayParams template = parseEffect(type, Vec3.ZERO, Options.parse(optionsRaw));
+        return new MiauParticleEffectsServer.TriggerSpec(id, template, offset, raw.trim());
     }
 
     /** 相对坐标解析：~ 或 ~N 表示相对音符盒方块的偏移（~ = 0），纯数字按原值。 */

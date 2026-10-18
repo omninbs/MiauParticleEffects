@@ -26,8 +26,13 @@ public final class NoteChainPlayer {
     private static final double TRAIL_SPACING = 0.25;
     /** 单帧拖尾撒点上限，防止极端位移时粒子数失控。 */
     private static final int MAX_TRAIL_PER_FRAME = 64;
-    /** startTick 与客户端世界时间的合理偏差上限；超出则改用“收包时刻为 0 点”，补偿网络延迟。 */
-    private static final long MAX_CLOCK_SKEW = 6000L;
+    /**
+     * 相邻两次 tick 之间允许计入时间轴的最大世界时间增量。
+     *
+     * <p>世界时间会被 {@code /time set} 整体跳变；直接用它做绝对差会让进度瞬间超过总时长，
+     * 整条链被判定为播放完毕而消失。超过该阈值的增量按 1 tick 处理。</p>
+     */
+    private static final long MAX_TICK_DELTA = 20L;
 
     /** 球体：一个亮核 + 球面均匀分布的若干外壳点，构成《滚动天空》式的发光小球。 */
     private static final int HEAD_AGE = 2;
@@ -57,10 +62,9 @@ public final class NoteChainPlayer {
     private final List<Integer> gradient;
     private final int linger;
     private final boolean rainbow;
-    private final long startTick;
     private final long restPhase;
 
-    private long receivedAt;
+    private long lastWorldTime;
     private boolean clockInitialised;
     private long elapsedTicks;
     private Vec3 pos;
@@ -81,7 +85,6 @@ public final class NoteChainPlayer {
         this.gradient = List.copyOf(payload.gradientColors());
         this.linger = payload.linger();
         this.rainbow = gradient.isEmpty() && color == NoteChainPayload.RAINBOW_COLOR;
-        this.startTick = payload.startTick();
         this.restPhase = Math.abs(id.hashCode());
 
         List<NoteChainPayload.Note> notes = payload.notes();
@@ -122,13 +125,17 @@ public final class NoteChainPlayer {
     public void tick(ClientLevel world) {
         long now = WorldTime.ticks(world);
         if (!clockInitialised) {
-            receivedAt = now;
+            lastWorldTime = now;
             clockInitialised = true;
+            return;
         }
-        // 时间基准优先用 startTick 对齐服务端；偏差过大（跨世界/时钟不可比）时退化为“收包时刻为 0”。
-        long raw = now - startTick;
-        long elapsed = (raw >= 0 && raw <= MAX_CLOCK_SKEW) ? raw : (now - receivedAt);
-        this.elapsedTicks = Math.max(0, elapsed);
+        long delta = now - lastWorldTime;
+        lastWorldTime = now;
+        // 时钟跳变（/time set、跨维度等）不计入时间轴，避免链被判定为已播完
+        if (delta < 0 || delta > MAX_TICK_DELTA) {
+            delta = 1;
+        }
+        this.elapsedTicks += delta;
 
         // linger < 0 表示常驻；否则最后一个音符结束后再停留 linger tick 自动移除。
         if (linger >= 0 && this.elapsedTicks >= totalTicks + linger) {

@@ -8,6 +8,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import org.miau.particleeffects.exparticle.network.ExParticlePayload;
 import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.TextDisplayParams;
@@ -26,6 +27,7 @@ public final class MiauParticleEffectsPackets {
         PayloadTypeRegistry.clientboundPlay().register(ClearPayload.ID, ClearPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NoteChainPayload.ID, NoteChainPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NoteChainClearPayload.ID, NoteChainClearPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ExParticlePayload.ID, ExParticlePayload.CODEC);
     }
 
     public static void broadcast(MinecraftServer server, CustomPacketPayload payload) {

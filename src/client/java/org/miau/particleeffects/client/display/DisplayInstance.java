@@ -37,6 +37,22 @@ public abstract class DisplayInstance {
     protected Phase phase = Phase.PENDING;
     /** 本次生成粒子所用到的帧间插值系数（tick 驱动时为 0）。 */
     protected float framePartial = 0f;
+    /**
+     * 是否刚推进了一个游戏 tick。
+     *
+     * <p>帧驱动实例每帧都会重生粒子；粒子速度必须按「每 tick 位移」给出，旧粒子才能在寿命内
+     * 滑到新位置。子类在生成粒子时消费该标志，用它按 tick 采样位移，避免把帧间位移当速度
+     * 造成拖影。</p>
+     */
+    protected boolean tickAdvanced = true;
+    /**
+     * 粒子速度补偿系数。
+     *
+     * <p>粒子寿命 2 tick、摩擦 0.91，两 tick 的总位移为 {@code v * (1 + 0.91)}。
+     * 传入「一个游戏 tick 的位移」乘以该系数，旧粒子才会在寿命结束时正好滑到新位置，
+     * 否则会拖在后面形成拖影。</p>
+     */
+    protected static final double PARTICLE_VELOCITY_SCALE = 1.0 / (1.0 + 0.91);
 
     protected DisplayInstance(Vec3 pos, Orientation orientation,
                                int durationTicks, int enterTicks, int exitTicks, int delayTicks,
@@ -84,6 +100,7 @@ public abstract class DisplayInstance {
         if (phase == Phase.DELETED) {
             return;
         }
+        tickAdvanced = true;
         tickCounter++;
         switch (phase) {
             case PENDING -> {

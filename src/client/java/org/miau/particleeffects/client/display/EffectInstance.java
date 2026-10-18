@@ -34,7 +34,11 @@ public final class EffectInstance extends DisplayInstance {
     private final float minLocalX;
     private final float maxLocalX;
     private final float hueOffset;
-    private Vec3 lastOrigin = null;
+    /** 上一 tick 的原点与缩放，用于求出每个点在本 tick 内的真实位移（含旋转/缩放）。 */
+    private Vec3 lastTickOrigin = null;
+    private float lastTickScale = 1f;
+    private Vec3 prevTickOrigin = null;
+    private float prevTickScale = 1f;
     private boolean explosionSpawned = false;
 
     public EffectInstance(EffectDisplayParams params) {
@@ -169,16 +173,19 @@ public final class EffectInstance extends DisplayInstance {
         }
 
         Vec3 origin = pos.add(moveOffset);
-        Vec3 originDelta = Vec3.ZERO;
-        if (lastOrigin != null) {
-            originDelta = origin.subtract(lastOrigin);
+        // 只在 tick 边界更新基准：粒子速度以 tick 为单位，用帧间位移会让旧粒子追不上新位置。
+        if (tickAdvanced) {
+            prevTickOrigin = lastTickOrigin;
+            prevTickScale = lastTickScale;
+            lastTickOrigin = origin;
+            lastTickScale = scaleFactor;
+            tickAdvanced = false;
         }
-        lastOrigin = origin;
 
         switch (params.type()) {
-            case CUBE, TETRA -> spawnWireframe(world, origin, originDelta, scaleFactor, fadeAlpha);
+            case CUBE, TETRA -> spawnWireframe(world, origin, scaleFactor, fadeAlpha);
             case EXPLOSION -> spawnExplosion(world, origin);
-            case WAVE -> spawnWave(world, origin, originDelta, scaleFactor, fadeAlpha);
+            case WAVE -> spawnWave(world, origin);
         }
     }
 
@@ -222,20 +229,36 @@ public final class EffectInstance extends DisplayInstance {
 
     // ------------------------------------------------------------------ wireframe
 
-    private void spawnWireframe(ClientLevel world, Vec3 origin, Vec3 originDelta,
-                                float scaleFactor, float fadeAlpha) {
+    private void spawnWireframe(ClientLevel world, Vec3 origin, float scaleFactor, float fadeAlpha) {
         if (fadeAlpha < 0.05f) {
             return;
         }
-        Quaternionf rotation = computeOrientation().mul(computeSpin(framePartial), new Quaternionf());
+        float spinTime = cumulativeSpanTicks() + framePartial;
+        Quaternionf rotation = computeOrientation().mul(computeSpinAt(spinTime), new Quaternionf());
+        // 上一 tick 的旋转角：同一局部点两次世界位置的差，就是它在本 tick 内的真实位移。
+        Quaternionf prevRotation = computeOrientation().mul(computeSpinAt(spinTime - 1f), new Quaternionf());
+        boolean hasPrev = prevTickOrigin != null;
         for (Vec3 p : basePoints) {
             Vector3f v = new Vector3f((float) p.x, (float) p.y, (float) p.z).rotate(rotation);
             Vec3 worldPos = origin.add(
                     v.x * scaleFactor,
                     v.y * scaleFactor,
                     v.z * scaleFactor);
+            double vx = 0;
+            double vy = 0;
+            double vz = 0;
+            if (hasPrev) {
+                Vector3f prev = new Vector3f((float) p.x, (float) p.y, (float) p.z).rotate(prevRotation);
+                Vec3 prevPos = prevTickOrigin.add(
+                        prev.x * prevTickScale,
+                        prev.y * prevTickScale,
+                        prev.z * prevTickScale);
+                vx = (worldPos.x - prevPos.x) * PARTICLE_VELOCITY_SCALE;
+                vy = (worldPos.y - prevPos.y) * PARTICLE_VELOCITY_SCALE;
+                vz = (worldPos.z - prevPos.z) * PARTICLE_VELOCITY_SCALE;
+            }
             spawnParticle(world, worldPos.x, worldPos.y, worldPos.z,
-                    originDelta.x, originDelta.y, originDelta.z,
+                    vx, vy, vz,
                     wireframeT((float) p.x), 1f, 2);
         }
     }
@@ -266,50 +289,84 @@ public final class EffectInstance extends DisplayInstance {
 
     // ------------------------------------------------------------------ wave
 
-    private void spawnWave(ClientLevel world, Vec3 origin, Vec3 originDelta,
-                           float scaleFactor, float fadeAlpha) {
-        if (fadeAlpha < 0.05f) {
+    /** 水波固定颜色：水色（淡蓝）。 */
+    private static final int WAVE_COLOR = 0x3F77E6;
+
+    /**
+     * 物理化水波：在水平面（XZ 平面）扩散的 2D 空心圆。
+     *
+     * <p>物理依据：</p>
+     * <ul>
+     *   <li>2D 表面波能量守恒：能量分布在周长 2πr 上，振幅 ∝ 1/√r</li>
+     *   <li>粘性耗散：振幅随时间按 exp(-k·t) 衰减</li>
+     *   <li>波纹结构：主波在前，尾随若干个次级波纹（间距 = 波长）</li>
+     *   <li>边界淡出：半径接近最大值时振幅归零</li>
+     * </ul>
+     * <p>振幅最终映射到粒子大小，让水波呈现「中心强、边缘弱」的自然外观。</p>
+     */
+    private void spawnWave(ClientLevel world, Vec3 origin) {
+        float speedPerTick = Math.max(0.005f, params.waveSpeed() / 20f);
+        float maxRadius = params.size();
+        float elapsed = cumulativeSpanTicks() + framePartial;
+
+        // 波长：决定同心圆波纹间距，取最大半径的 18%
+        float wavelength = Math.max(0.5f, maxRadius * 0.18f);
+        // 波纹数量：主波 + 2 个尾随波纹
+        int waveCount = 3;
+        // 粘性耗散系数
+        float decayK = 0.012f;
+        // EXIT 阶段快速淡出
+        float exitFade = phase == Phase.EXIT && exitTicks > 0
+                ? Math.max(0f, 1f - (float) tickCounter / exitTicks)
+                : 1f;
+        if (exitFade <= 0f) {
             return;
         }
-        Quaternionf rotation = computeOrientation().mul(computeSpin(framePartial), new Quaternionf());
-        // speed：展开速度（方块/秒），默认已由命令层按“2 秒展开到最大”折算。
-        float speedPerTick = Math.max(0.005f, params.waveSpeed() / 20f);
-        int expandTicks = (int) Math.ceil(params.size() / speedPerTick);
-        if (expandTicks < 1) {
-            expandTicks = 1;
-        }
-        float elapsed = cumulativeSpanTicks() + framePartial;
-        float t = Math.min(1f, elapsed / expandTicks);
-        float radius = params.size() * t;
-        float gradientT = Math.min(1f, radius / params.size());
 
-        float circumference = (float) (2 * Math.PI * radius);
-        int count = Math.max(16, (int) (circumference / 0.35));
-        if (count > 300) {
-            count = 300;
-        }
-        boolean expanding = t < 1f;
-        for (int i = 0; i < count; i++) {
-            float angle = (float) (2 * Math.PI * i / count);
-            float cos = (float) Math.cos(angle);
-            float sin = (float) Math.sin(angle);
-            Vector3f local = new Vector3f(cos * radius, 0f, sin * radius);
-            Vector3f worldV = local.rotate(rotation);
-            Vec3 worldPos = origin.add(
-                    worldV.x * scaleFactor,
-                    worldV.y * scaleFactor,
-                    worldV.z * scaleFactor);
-            double vx = originDelta.x;
-            double vy = originDelta.y;
-            double vz = originDelta.z;
-            if (expanding) {
-                // 沿径向向外速度：让粒子在帧间平滑外扩（渲染插值），避免环面一格一格跳。
-                Vector3f radial = new Vector3f(cos, 0f, sin).rotate(rotation);
-                vx += radial.x * speedPerTick;
-                vy += radial.y * speedPerTick;
-                vz += radial.z * speedPerTick;
+        for (int w = 0; w < waveCount; w++) {
+            // 第 w 个波纹的半径：主波(w=0)在前，尾随波纹(w>0)滞后一个波长
+            float r = speedPerTick * elapsed - w * wavelength;
+            if (r <= 0.05f || r > maxRadius) {
+                continue;
             }
-            spawnParticle(world, worldPos.x, worldPos.y, worldPos.z, vx, vy, vz, gradientT, 1f, 2);
+
+            // 振幅衰减：1/√r（2D 表面波能量守恒）
+            float amp = (float) (1.0 / Math.sqrt(r + 0.1));
+            // 粘性耗散
+            amp *= (float) Math.exp(-elapsed * decayK);
+            // 尾随波纹本身更弱
+            amp *= (1f - w * 0.25f);
+
+            // 边界淡出：半径接近最大值时振幅归零
+            float rNorm = r / maxRadius;
+            float fadeOut = rNorm > 0.8f ? Math.max(0f, (1f - rNorm) / 0.2f) : 1f;
+            // 入场淡入：最初 2 tick 振幅从 0 升到 1，避免突兀
+            float fadeIn = elapsed < 2f ? elapsed / 2f : 1f;
+
+            float effective = amp * fadeOut * fadeIn * exitFade;
+            if (effective < 0.05f) {
+                continue;
+            }
+
+            // 振幅映射到粒子大小（0.3~1.4）
+            float scale = 0.3f + effective * 1.1f;
+
+            // 生成圆环：周长越长粒子越密，但封顶 300
+            float circumference = (float) (2 * Math.PI * r);
+            int count = Math.max(16, (int) (circumference / 0.35));
+            if (count > 300) {
+                count = 300;
+            }
+
+            for (int i = 0; i < count; i++) {
+                float angle = (float) (2 * Math.PI * i / count);
+                float cos = (float) Math.cos(angle);
+                float sin = (float) Math.sin(angle);
+                double px = origin.x + cos * r;
+                double py = origin.y;
+                double pz = origin.z + sin * r;
+                ColoredEndRodParticle.spawnStatic(world, px, py, pz, WAVE_COLOR, scale, 2, false);
+            }
         }
     }
 
@@ -338,7 +395,8 @@ public final class EffectInstance extends DisplayInstance {
         return new Quaternionf().rotationYXZ(yawRad, pitchRad, rollRad);
     }
 
-    private Quaternionf computeSpin(float partialTick) {
+    /** 按绝对累计时间（tick）求旋转角，便于同时取「当前」与「上一 tick」的旋转。 */
+    private Quaternionf computeSpinAt(float time) {
         RotationSpec rotation = params.rotation();
         if (rotation == null) {
             return new Quaternionf();
@@ -349,7 +407,7 @@ public final class EffectInstance extends DisplayInstance {
             return new Quaternionf();
         }
         // 使用跨阶段单调递增的累计时间，避免 ENTER→DISPLAY→EXIT 时 tickCounter 归零导致旋转跳变。
-        float angle = (float) Math.toRadians(rotation.degreesPerTick() * (cumulativeSpanTicks() + partialTick));
+        float angle = (float) Math.toRadians(rotation.degreesPerTick() * time);
         return new Quaternionf().rotationAxis(angle, axis.x / len, axis.y / len, axis.z / len);
     }
 

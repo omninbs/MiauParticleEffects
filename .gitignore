@@ -25,3 +25,6 @@ hs_err_pid*
 # Compiled / pack output
 out/
 bin/
+
+# Local reference material (decompiled jars, tools, scratch files) — never committed
+target/

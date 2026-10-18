@@ -4,10 +4,16 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.particle.v1.ParticleProviderRegistry;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import org.miau.particleeffects.client.display.ClientDisplayBackend;
 import org.miau.particleeffects.client.display.ClientDisplayManager;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
 import org.miau.particleeffects.client.render.FrameDriver;
+import org.miau.particleeffects.exparticle.client.ExParticleClientNetwork;
+import org.miau.particleeffects.exparticle.client.ParticleExUtil;
+import org.miau.particleeffects.exparticle.expr.ExprLog;
+import org.miau.particleeffects.exparticle.network.ExParticlePayload;
 import org.miau.particleeffects.particle.MiauParticleEffectsParticles;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets;
 
@@ -18,6 +24,24 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
         ClientDisplayBackend.init();
         // 把特效与弹力球的位置推进提升到渲染帧率（约 60FPS）
         FrameDriver.init();
+
+        // 把表达式引擎的错误输出接到聊天栏
+        ExprLog.setSink(throwable -> {
+            Minecraft client = Minecraft.getInstance();
+            if (client != null && client.player != null) {
+                /*? if >=26.1 {*/
+                client.player.sendSystemMessage(
+                        Component.literal("[MiauParticleEffects] " + throwable));
+                /*?} else {*/
+                /*client.player.displayClientMessage(
+                        Component.literal("[MiauParticleEffects] " + throwable), false);
+                *//*?}*/
+            }
+        });
+
+        // 表达式特效的按 tick 排程任务
+        ClientTickEvents.START_CLIENT_TICK.register(client -> ParticleExUtil.onStartClientTick());
+        ClientTickEvents.END_CLIENT_TICK.register(client -> ParticleExUtil.onEndClientTick());
 
         ParticleProviderRegistry.getInstance().register(
                 MiauParticleEffectsParticles.COLORED_END_ROD,
@@ -53,5 +77,10 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
                 MiauParticleEffectsPackets.NoteChainClearPayload.ID,
                 (payload, context) -> context.client().execute(
                         () -> ClientDisplayManager.noteChainClear(payload.id())));
+
+        ClientPlayNetworking.registerGlobalReceiver(
+                ExParticlePayload.ID,
+                (payload, context) -> context.client().execute(
+                        () -> ExParticleClientNetwork.handle(payload)));
     }
 }

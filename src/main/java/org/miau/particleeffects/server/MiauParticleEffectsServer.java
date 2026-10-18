@@ -32,10 +32,13 @@ public final class MiauParticleEffectsServer {
     /** 存活的音符链，键 = 锚点打包长整型；同一锚点重复执行 = 覆盖旧链、重置重播。 */
     private static final Map<Long, ActiveChain> CHAINS = new LinkedHashMap<>();
 
-    /** 「音符盒触发特效」开关与模板（位置为相对音符盒方块坐标的偏移）。 */
+    /** 「音符盒触发特效」开关与多条模板（位置为相对音符盒方块坐标的偏移）。 */
     private static boolean noteTriggerEffect = false;
-    private static EffectDisplayParams noteTriggerTemplate;
-    private static Vec3 noteTriggerOffset = Vec3.ZERO;
+    private static final List<TriggerSpec> NOTE_TRIGGERS = new ArrayList<>();
+
+    /** 一条「音符盒触发特效」配置：稳定 id + 模板 + 相对音符盒方块的偏移 + 参数原文。 */
+    public record TriggerSpec(String id, EffectDisplayParams template, Vec3 offset, String specText) {
+    }
 
     private enum ActiveKind {
         TEXT,
@@ -254,7 +257,7 @@ public final class MiauParticleEffectsServer {
             return;
         }
         pruneChains(server);
-        if (!noteTriggerEffect || noteTriggerTemplate == null || CHAINS.isEmpty()) {
+        if (!noteTriggerEffect || NOTE_TRIGGERS.isEmpty() || CHAINS.isEmpty()) {
             return;
         }
         long now = server.getTickCount();
@@ -270,14 +273,20 @@ public final class MiauParticleEffectsServer {
         MiauParticleEffectsPackets.NoteChainPayload payload = chain.payload();
         MiauParticleEffectsPackets.NoteChainPayload.Note note = chain.consume();
         int index = chain.nextNote() - 1;
-        // 音符盒所在方块坐标 + 用户给定的相对偏移（~~~ = 该音符盒方块）。
-        Vec3 at = new Vec3(
+        // 音符盒所在方块坐标，再叠加各条配置各自的相对偏移（~~~ = 该音符盒方块）。
+        Vec3 base = new Vec3(
                 payload.ax() + note.ox(),
                 payload.ay() + note.oy(),
-                payload.az() + note.oz()).add(noteTriggerOffset);
-        MiauParticleEffectsPackets.broadcast(server,
-                new MiauParticleEffectsPackets.ShowEffectPayload(
-                        noteTriggerTemplate.withPos(at, "nbtrigger-" + payload.id() + "-" + index)));
+                payload.az() + note.oz());
+        int triggerIndex = 0;
+        for (TriggerSpec trigger : NOTE_TRIGGERS) {
+            Vec3 at = base.add(trigger.offset());
+            MiauParticleEffectsPackets.broadcast(server,
+                    new MiauParticleEffectsPackets.ShowEffectPayload(
+                            trigger.template().withPos(at,
+                                    "nbtrigger-" + payload.id() + "-" + index + "-" + triggerIndex)));
+            triggerIndex++;
+        }
     }
 
     /** 开关「音符盒触发特效」；开启时跳过已经过去的音符，避免补播历史特效。 */
@@ -295,13 +304,31 @@ public final class MiauParticleEffectsServer {
         return noteTriggerEffect;
     }
 
-    public static void setNoteTriggerSpec(EffectDisplayParams template, Vec3 offset) {
-        noteTriggerTemplate = template;
-        noteTriggerOffset = offset != null ? offset : Vec3.ZERO;
+    public static void setNoteTriggerSpecs(List<TriggerSpec> specs) {
+        NOTE_TRIGGERS.clear();
+        NOTE_TRIGGERS.addAll(specs);
+    }
+
+    public static List<TriggerSpec> noteTriggerSpecs() {
+        return List.copyOf(NOTE_TRIGGERS);
+    }
+
+    /** 添加一条配置；id 已存在时覆盖。 */
+    public static void addNoteTriggerSpec(TriggerSpec spec) {
+        NOTE_TRIGGERS.removeIf(existing -> existing.id().equals(spec.id()));
+        NOTE_TRIGGERS.add(spec);
+    }
+
+    public static boolean removeNoteTriggerSpec(String id) {
+        return NOTE_TRIGGERS.removeIf(spec -> spec.id().equals(id));
+    }
+
+    public static void clearNoteTriggerSpecs() {
+        NOTE_TRIGGERS.clear();
     }
 
     public static boolean hasNoteTriggerSpec() {
-        return noteTriggerTemplate != null;
+        return !NOTE_TRIGGERS.isEmpty();
     }
 
     /** 计算链的到期 tick：最后一个音符结束后再停留 linger tick。 */

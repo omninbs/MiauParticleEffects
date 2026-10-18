@@ -36,6 +36,10 @@ dependencies {
     // `modImplementation` works on both loom variants (converted to `implementation` on 26.1+).
     modImplementation("net.fabricmc:fabric-loader:${property("deps.fabric_loader")}")
 
+    // Bytecode generation for the expression engine. Provided at runtime by the Fabric
+    // loader (it ships ASM on the launch classpath), so it is compile-only here.
+    compileOnly("org.ow2.asm:asm:9.7")
+
     // Fabric API modules actually used by this mod
     fapi("fabric-command-api-v2")
     fapi("fabric-events-interaction-v0")

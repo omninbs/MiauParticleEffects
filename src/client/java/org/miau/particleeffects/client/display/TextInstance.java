@@ -31,7 +31,8 @@ public final class TextInstance extends DisplayInstance {
     private final float minLocalX;
     private final float maxLocalX;
     private final float hueOffset;
-    private Vec3 lastBaseOffset = null;
+    private Vec3 lastTickOffset = null;
+    private Vec3 tickDelta = Vec3.ZERO;
 
     public TextInstance(TextDisplayParams params) {
         super(params.pos(), params.orientation(),
@@ -96,12 +97,18 @@ public final class TextInstance extends DisplayInstance {
         ColorMode colorMode = params.colorMode();
         long worldTime = WorldTime.ticks(world);
 
-        // 位移速度：让本 tick 重生成的像素粒子沿位移方向滑行，使旧层与新层重合，消除残影。
-        Vec3 delta = Vec3.ZERO;
-        if (lastBaseOffset != null) {
-            delta = baseOffset.subtract(lastBaseOffset);
+        // 位移速度：只在 tick 边界采样位移。粒子速度以 tick 为单位，若用帧间位移，
+        // 旧粒子在寿命内移动得太少、追不上新位置，移动时就会留下拖影。
+        if (tickAdvanced) {
+            if (lastTickOffset != null) {
+                tickDelta = baseOffset.subtract(lastTickOffset);
+            }
+            lastTickOffset = baseOffset;
+            tickAdvanced = false;
         }
-        lastBaseOffset = baseOffset;
+        double speedX = tickDelta.x * PARTICLE_VELOCITY_SCALE;
+        double speedY = tickDelta.y * PARTICLE_VELOCITY_SCALE;
+        double speedZ = tickDelta.z * PARTICLE_VELOCITY_SCALE;
 
         for (int i = 0; i < pixels.size(); i += stride) {
             FontRasterizer.ParticlePixel px = pixels.get(i);
@@ -117,11 +124,11 @@ public final class TextInstance extends DisplayInstance {
             Vec3 worldPos = baseOffset.add(local);
             if (colorMode == ColorMode.RAINBOW_COLOR) {
                 ColoredEndRodParticle.spawnRainbow(world, worldPos.x, worldPos.y, worldPos.z,
-                        delta.x, delta.y, delta.z, sizeFactor, 2, hueOffset, false, params.force());
+                        speedX, speedY, speedZ, sizeFactor, 2, hueOffset, false, params.force());
             } else {
                 int colorRgb = resolvePixelColor(px, colorMode, worldTime);
                 ColoredEndRodParticle.spawnMoving(world, worldPos.x, worldPos.y, worldPos.z,
-                        delta.x, delta.y, delta.z, colorRgb, sizeFactor, 2, params.force());
+                        speedX, speedY, speedZ, colorRgb, sizeFactor, 2, params.force());
             }
         }
     }
