@@ -15,7 +15,7 @@
 [![Fabric API](https://img.shields.io/badge/Fabric%20API-supported-dbd0b4?style=flat-square)](#-运行需求)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/omninbs/MiauParticleEffects?style=flat-square&color=yellow)](https://github.com/omninbs/MiauParticleEffects/stargazers)
-[![Demo](https://img.shields.io/badge/Demo-Bilibili-ff69b4?style=flat-square)](https://www.bilibili.com/video/BV12Ket6rEG9/)
+[![Demo](https://img.shields.io/badge/Demo-Bilibili-ff69b4?style=flat-square)](https://www.bilibili.com/video/BV1y1n861ER4/)
 
 </div>
 
@@ -240,7 +240,7 @@ triggereffect effect wave ~ ~2 ~ duration=4 speed=8 size=2.8 color=#11FFFF
   </tr>
 </table>
 
-截图很难展现内容，而且还麻烦，猫猫喜欢偷懒喵！更多请看 [B 站展示视频](https://www.bilibili.com/video/BV12Ket6rEG9/)。
+截图很难展现内容，而且还麻烦，猫猫喜欢偷懒喵！更多请看【红石音乐《失眠》| 纯原版】 https://www.bilibili.com/video/BV1y1n861ER4/?share_source=copy_web&vd_source=3e96416363504f8b52218590d3a13075
 
 ---
 
