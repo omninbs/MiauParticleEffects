@@ -43,12 +43,8 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
         ClientTickEvents.START_CLIENT_TICK.register(client -> ParticleExUtil.onStartClientTick());
         ClientTickEvents.END_CLIENT_TICK.register(client -> ParticleExUtil.onEndClientTick());
 
-        // 单调时钟：不能依赖世界时间，否则时间固定或 /time set 时动画会卡住/跳变
-        ClientTickEvents.START_CLIENT_TICK.register(client -> {
-            if (!client.isPaused()) {
-                ClientClock.advance();
-            }
-        });
+        // 时间锚点：只认「客户端游戏刻」——每 tick 恒 +1，不受任何世界时间/时间同步包影响。
+        ClientTickEvents.START_CLIENT_TICK.register(client -> ClientClock.advance());
 
         ParticleProviderRegistry.getInstance().register(
                 MiauParticleEffectsParticles.COLORED_END_ROD,
@@ -84,6 +80,11 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
                 MiauParticleEffectsPackets.NoteChainClearPayload.ID,
                 (payload, context) -> context.client().execute(
                         () -> ClientDisplayManager.noteChainClear(payload.id())));
+
+        ClientPlayNetworking.registerGlobalReceiver(
+                MiauParticleEffectsPackets.NoteChainProgressPayload.ID,
+                (payload, context) -> context.client().execute(
+                        () -> ClientDisplayManager.noteChainProgress(payload)));
 
         ClientPlayNetworking.registerGlobalReceiver(
                 MiauParticleEffectsPackets.TextChainPayload.ID,

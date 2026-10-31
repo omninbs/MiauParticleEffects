@@ -1,5 +1,7 @@
 package org.miau.particleeffects.client.display;
 
+import org.miau.particleeffects.client.ClientClock;
+
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
@@ -7,7 +9,6 @@ import org.joml.Vector3f;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.AnimationToken;
 import org.miau.particleeffects.animation.AnimCategory;
-import org.miau.particleeffects.client.ClientClock;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
 import org.miau.particleeffects.config.ConfigManager;
 import org.miau.particleeffects.model.ColorCodec;
@@ -174,7 +175,7 @@ public final class EffectInstance extends DisplayInstance {
         if (phase == Phase.DELETED || phase == Phase.PENDING) {
             return;
         }
-        this.framePartial = partialTick;
+        this.framePartial = clampPartial(partialTick);
         float progress = easedProgress(partialTick);
         float fadeAlpha = computeFadeAlpha();
         Vec3 moveOffset = computeMoveOffset(tickCounter, partialTick);

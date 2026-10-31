@@ -1,12 +1,13 @@
 package org.miau.particleeffects.client.display;
 
+import org.miau.particleeffects.client.ClientClock;
+
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.AnimationToken;
 import org.miau.particleeffects.animation.AnimCategory;
 import org.miau.particleeffects.animation.Easings;
-import org.miau.particleeffects.client.ClientClock;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
 import org.miau.particleeffects.client.raster.FontRasterizer;
 import org.miau.particleeffects.model.ColorCodec;
@@ -153,8 +154,7 @@ public final class TextInstance extends DisplayInstance {
     public void spawnParticles(ClientLevel world, float partialTick) {
         if (phase == Phase.DELETED || phase == Phase.PENDING) {
             return;
-        }
-        ensureRasterized();
+        }        ensureRasterized();
         if (pixels.isEmpty()) {
             return;
         }
@@ -166,7 +166,7 @@ public final class TextInstance extends DisplayInstance {
             }
             lastFrameNanos = now;
         }
-        this.framePartial = partialTick;
+        this.framePartial = clampPartial(partialTick);
 
         float progress = easedProgress(partialTick);
         float fadeAlpha = computeFadeAlpha();

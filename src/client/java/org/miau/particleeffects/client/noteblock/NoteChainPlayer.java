@@ -2,10 +2,10 @@ package org.miau.particleeffects.client.noteblock;
 
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.phys.Vec3;
+import org.miau.particleeffects.client.ClientClock;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.HorizontalCurve;
-import org.miau.particleeffects.client.ClientClock;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainPayload;
 
 import java.util.List;
@@ -19,6 +19,10 @@ import java.util.List;
  *
  * 位置由渲染帧驱动（约 60FPS）：{@link #tick} 只推进时间轴，{@link #frame} 用
  * 「已过 tick 数 + 帧间插值系数」重新求位置并生成粒子，使轨迹按帧连续、没有折线感。
+ *
+ * <p><b>时间锚点只用客户端游戏刻</b>（{@link ClientTickClock}），不读任何世界时间——
+ * 否则 {@code /time set}、日夜冻结、服务端时间包覆盖、replay 重建世界都会让时间轴跳变，
+ * 轻则瞬移、重则一步跳完整首歌判定「播完」而直接消失。</p>
  */
 public final class NoteChainPlayer {
 
@@ -26,15 +30,8 @@ public final class NoteChainPlayer {
     private static final double TRAIL_SPACING = 0.25;
     /** 单帧拖尾撒点上限，防止极端位移时粒子数失控。 */
     private static final int MAX_TRAIL_PER_FRAME = 64;
-    /**
-     * 相邻两次 tick 之间允许计入时间轴的最大增量。
-     *
-     * <p>时间轴由客户端单调时钟驱动；超过该阈值的增量（例如卡顿后一次跳很多）按 1 tick 处理，
-     * 避免进度瞬间越过总时长。</p>
-     */
-    private static final long MAX_TICK_DELTA = 20L;
-
-    /** 球体：一个亮核 + 球面均匀分布的若干外壳点，构成《滚动天空》式的发光小球。 */
+    
+    /** 球体：亮核 + 球面均匀分布的若干外壳点，构成《滚动天空》式的发光小球。 */
     private static final int HEAD_AGE = 2;
     private static final float HEAD_CORE_SCALE = 2.6f;
     private static final float HEAD_SHELL_SCALE = 1.15f;
@@ -42,6 +39,17 @@ public final class NoteChainPlayer {
     private static final int HEAD_SHELL_POINTS = 5;
     /** 黄金角，用于球面均匀取点。 */
     private static final double GOLDEN_ANGLE = 2.399963229728653;
+
+    /**
+     * 粒子速度补偿系数。
+     *
+     * <p>粒子寿命 {@link #HEAD_AGE}=2 tick、摩擦 0.91，两 tick 的总位移是 {@code v*(1+0.91)}。
+     * 传入「一个 tick 的位移 ÷ 1.91」，粒子就能在寿命结束时正好滑到下一 tick 的位置，
+     * 而渲染时引擎会按 partialTick 在两 tick 之间插值 —— 这就是原版粒子连续运动的做法。</p>
+     */
+    private static final double PARTICLE_VELOCITY_SCALE = 1.0 / 1.91;
+    /** 暂停/freeze 时补撒静态点的最小间隔（50ms ≈ 20Hz，与正常节奏一致）。 */
+    private static final long STATIC_RESPAWN_NANOS = 50_000_000L;
 
     /** 彗尾：越靠尾部越小，形成锥形彗尾。 */
     private static final float TRAIL_SCALE_HEAD = 0.95f;
@@ -64,9 +72,32 @@ public final class NoteChainPlayer {
     private final boolean rainbow;
     private final long restPhase;
 
-    private long lastClockTime;
-    private boolean clockInitialised;
-    private long elapsedTicks;
+    /**
+     * 服务端广播的最新时间轴（tick，权威值）。
+     *
+     * <p>为什么由服务端驱动：客户端 tick 事件的频率**不随 {@code /tick rate} 变化**，
+     * 客户端也拿不到可靠的服务端 tick 时间，所以任何「本地计时」在 {@code /tick rate}
+     * 改变后都会仍以 20 tick/s 走。而服务端 tick 频率是权威的（音符盒触发特效就是靠它
+     * 才正常变速的），因此链的进度由服务端每 tick 广播，客户端只做平滑跟随。</p>
+     */
+    private double serverTicks = Double.NaN;
+    /** 平滑后的显示时间轴：前馈（按估算速率推进）+ 反馈（向服务端值收敛）。 */
+    private double displayTicks = Double.NaN;
+    /** 上一次收到进度样本的时间戳与数值，用于估算服务端 tick 速率。 */
+    private long lastProgressNanos;
+    private double lastProgressTicks = Double.NaN;
+    /** 估算的服务端 tick 速率（tick/s），初值 20，靠样本间隔自适应。 */
+    private float rateEstimate = 20f;
+    /** 上一次渲染帧的时间戳。 */
+    private long lastFrameNanos;
+    /** 收不到服务端进度时的兜底时钟。 */
+    private long lastFallbackTick = Long.MIN_VALUE;
+    /** 上一次「撒点」时的显示时间轴，用来算本批粒子的速度补偿。 */
+    private double lastEmitTicks = Double.NaN;
+    /** 上一次「暂停/freeze 期间补撒静态点」的时间戳。 */
+    private long lastStaticNanos;
+    /** 上一次 tick 路径撒点的时间戳；用于判断客户端 tick 是否还在跑。 */
+    private long lastTickNanos;
     private Vec3 pos;
     private Vec3 restPos;
     /** 上一次撒拖尾的时间参数与位置；用于按弧长（而不是按帧）决定撒点密度。 */
@@ -121,45 +152,140 @@ public final class NoteChainPlayer {
         return removed;
     }
 
-    /** 只推进时间轴与到期判定；位置与粒子交给 {@link #frame}。 */
-    public void tick(ClientLevel world) {
-        // 用客户端单调时钟，而不是世界时间：时间固定（关闭日夜循环）时世界时间不推进，
-        // 弹力球会卡住；/time set 又会让它跳变。
-        long now = ClientClock.ticks();
-        if (!clockInitialised) {
-            lastClockTime = now;
-            clockInitialised = true;
-            return;
-        }
-        long delta = now - lastClockTime;
-        lastClockTime = now;
-        if (delta < 0 || delta > MAX_TICK_DELTA) {
-            delta = 1;
-        }
-        this.elapsedTicks += delta;
+    /** 已经播放了多少 tick（用于重复下发防抖）。 */
+    public long elapsedTicks() {
+        return Double.isNaN(displayTicks) ? 0L : (long) displayTicks;
+    }
 
-        // linger < 0 表示常驻；否则最后一个音符结束后再停留 linger tick 自动移除。
-        if (linger >= 0 && this.elapsedTicks >= totalTicks + linger) {
-            removed = true;
+    /**
+     * 收到服务端广播的链进度（tick）。这是时间轴的**唯一权威来源**：
+     * 服务端 tick 频率跟随 {@code /tick rate}，暂停/{@code /tick freeze} 时停止，回放时按录制重放。
+     */
+    public void onServerProgress(float elapsed) {
+        long now = System.nanoTime();
+        if (!Double.isNaN(lastProgressTicks) && lastProgressNanos != 0L) {
+            double dt = (now - lastProgressNanos) * 1e-9;
+            double dTicks = elapsed - lastProgressTicks;
+            if (dt > 0.004 && dTicks > 0.0) {
+                float measured = (float) (dTicks / dt);
+                // 只在合理区间内采信，避免单个异常样本把速率带偏。
+                if (measured > 0.05f && measured < 2000f) {
+                    rateEstimate = rateEstimate * 0.6f + measured * 0.4f;
+                }
+            }
+        }
+        lastProgressTicks = elapsed;
+        lastProgressNanos = now;
+        if (Double.isNaN(serverTicks)) {
+            // 首个样本：直接对齐，避免从 0 开始追赶。
+            serverTicks = elapsed;
+            displayTicks = elapsed;
+        } else {
+            serverTicks = elapsed;
         }
     }
 
-    /** 渲染帧推进：按「tick + 插值系数」求精确位置，并沿曲线撒拖尾与球体。 */
-    public void frame(ClientLevel world, float partialTick) {
+    /**
+     * 渲染帧侧：把显示时间轴向服务端值平滑推进（前馈 + 反馈），并在时间停止时补撒静态点。
+     *
+     * <p>前馈用估算出的服务端 tick 速率，保证匀速；反馈把累计误差拉回服务端权威值。
+     * 这样即使客户端 tick 频率与 tick rate 不一致，画面速度也完全跟随服务端。</p>
+     */
+    public void frame(ClientLevel world, float deltaTicks) {
         if (removed) {
             return;
         }
-        double t = elapsedTicks + Math.max(0f, partialTick);
+        long now = System.nanoTime();
+        double dt = lastFrameNanos == 0L ? 0.0 : (now - lastFrameNanos) * 1e-9;
+        lastFrameNanos = now;
+        if (Double.isNaN(serverTicks)) {
+            // 兜底：完全收不到服务端进度（服务端未装模组、或回放未重放该包）时，
+            // 退回「客户端游戏刻」推进，至少让球能按本地节奏走完。
+            long clock = ClientClock.ticks();
+            if (Double.isNaN(displayTicks)) {
+                displayTicks = 0.0;
+                lastFallbackTick = clock;
+                return;
+            }
+            long step = clock - lastFallbackTick;
+            lastFallbackTick = clock;
+            if (step > 0 && step < 20) {
+                displayTicks += step;
+            }
+            return;
+        }
+
+        // 服务端进度是否还在更新：超时时间随估算速率自适应（低 tick rate 时包更稀疏）。
+        double timeoutSeconds = Math.max(0.25, 3.0 / Math.max(0.05f, rateEstimate));
+        boolean progressAlive = lastProgressNanos != 0L
+                && (now - lastProgressNanos) * 1e-9 < timeoutSeconds;
+        boolean timeRunning = deltaTicks > 0f && progressAlive;
+
+        if (timeRunning && dt > 0.0 && dt < 0.5) {
+            // 前馈：按服务端 tick 速率推进
+            displayTicks += rateEstimate * dt;
+            // 反馈：向权威值收敛（25% 每帧，约 3~4 帧内跟上）
+            displayTicks += (serverTicks - displayTicks) * 0.25;
+            // 允许最多落后 3 tick（网络抖动缓冲），不允许明显超前
+            if (displayTicks < serverTicks - 3.0) {
+                displayTicks = serverTicks - 3.0;
+            }
+            if (displayTicks > serverTicks + 1.0) {
+                displayTicks = serverTicks + 1.0;
+            }
+        }
+
+        if (removed) {
+            return;
+        }
+        // 时间停止（暂停/freeze/断流）：补撒静态点，避免粒子过期后球消失。
+        // 只有客户端 tick 也停了（单人 Esc，通常 tick 仍在跑）才需要补，避免和 tick 路径双撒。
+        if (!timeRunning && now - lastTickNanos > 80_000_000L) {
+            if (now - lastStaticNanos < STATIC_RESPAWN_NANOS) {
+                return;
+            }
+            lastStaticNanos = now;
+            renderAt(world, displayTicks, 0.0);
+        }
+    }
+
+    /**
+     * 每客户端 tick 撒一次粒子（粒子只有按 tick 撒才能当帧被引擎收进渲染组）。
+     *
+     * <p>这一批粒子的速度补偿按「本批跨越的服务端时间」计算：
+     * {@code advance = displayTicks - lastEmitTicks}，因此 tick rate 再高，
+     * 粒子也能在两 tick 寿命内滑到正确的下一位置。</p>
+     */
+    public void tick(ClientLevel world) {
+        if (removed || Double.isNaN(displayTicks)) {
+            return;
+        }
+        lastTickNanos = System.nanoTime();
+        // linger < 0 表示常驻；否则最后一个音符结束后再停留 linger tick 自动移除。
+        if (linger >= 0 && displayTicks >= totalTicks + linger) {
+            removed = true;
+            return;
+        }
+        double advance = Double.isNaN(lastEmitTicks) ? 0.0 : displayTicks - lastEmitTicks;
+        if (advance < 0.0) {
+            advance = 0.0;
+        }
+        lastEmitTicks = displayTicks;
+        renderAt(world, displayTicks, advance);
+    }
+
+    /** 按给定时间（tick，含小数）求位置并撒点；{@code advance} 是本批跨越的服务端 tick 数。 */
+    private void renderAt(ClientLevel world, double t, double advance) {
         Vec3 last = points[points.length - 1];
         if (totalTicks <= 0 || t >= totalTicks) {
             pos = last;
             restPos = last;
-            spawnRestGlow(world, elapsedTicks);
+            spawnRestGlow(world, (long) t);
             return;
         }
         pos = positionAt(t);
         emitTrail(world, t);
-        emitHead(world, t);
+        emitHead(world, t, advance);
     }
 
     // ------------------------------------------------------------------ 轨迹
@@ -260,10 +386,23 @@ public final class NoteChainPlayer {
         lastEmitPos = pos;
     }
 
-    /** 球体：亮核 + 球面外壳点。每帧重撒，位置由帧间插值精确给出，因此在渲染帧上连续移动。 */
-    private void emitHead(ClientLevel world, double t) {
+    /**
+     * 球体：亮核 + 球面外壳点。
+     *
+     * <p>粒子带**前进速度**：位移取「本批跨越的服务端时间」{@code advance}，
+     * 除以粒子两 tick 的总衰减 {@code 1+0.91}，于是粒子在寿命结束时正好滑到
+     * {@code positionAt(t + advance)}，引擎再按 partialTick 插值 —— 视觉连续。
+     * 这样即使 {@code /tick rate} 把速度放大数倍，粒子也不会落后于球头。</p>
+     */
+    private void emitHead(ClientLevel world, double t, double advance) {
         int c = renderColor(t);
-        spawnHead(world, pos.x, pos.y, pos.z, c, HEAD_CORE_SCALE, HEAD_AGE);
+        // 单批位移限制在 8 tick 内，避免跳转/卡顿后粒子飞得过远。
+        double step = Math.max(0.0, Math.min(advance, 8.0));
+        Vec3 ahead = positionAt(Math.min(totalTicks, t + step));
+        double vx = (ahead.x - pos.x) * PARTICLE_VELOCITY_SCALE;
+        double vy = (ahead.y - pos.y) * PARTICLE_VELOCITY_SCALE;
+        double vz = (ahead.z - pos.z) * PARTICLE_VELOCITY_SCALE;
+        spawnHead(world, pos.x, pos.y, pos.z, vx, vy, vz, c, HEAD_CORE_SCALE, HEAD_AGE);
         for (int i = 0; i < HEAD_SHELL_POINTS; i++) {
             double y = 1.0 - 2.0 * (i + 0.5) / HEAD_SHELL_POINTS;
             double r = Math.sqrt(Math.max(0.0, 1.0 - y * y));
@@ -271,7 +410,8 @@ public final class NoteChainPlayer {
             double ox = Math.cos(theta) * r * HEAD_SHELL_RADIUS;
             double oy = y * HEAD_SHELL_RADIUS;
             double oz = Math.sin(theta) * r * HEAD_SHELL_RADIUS;
-            spawnHead(world, pos.x + ox, pos.y + oy, pos.z + oz, c, HEAD_SHELL_SCALE, HEAD_AGE);
+            spawnHead(world, pos.x + ox, pos.y + oy, pos.z + oz,
+                    vx, vy, vz, c, HEAD_SHELL_SCALE, HEAD_AGE);
         }
     }
 
@@ -312,11 +452,12 @@ public final class NoteChainPlayer {
         }
     }
 
-    private void spawnHead(ClientLevel world, double x, double y, double z, int c, float scale, int age) {
+    private void spawnHead(ClientLevel world, double x, double y, double z,
+                           double vx, double vy, double vz, int c, float scale, int age) {
         if (rainbow) {
-            ColoredEndRodParticle.spawnRainbow(world, x, y, z, 0, 0, 0, scale, age, 0f, true, force);
+            ColoredEndRodParticle.spawnRainbow(world, x, y, z, vx, vy, vz, scale, age, 0f, true, force);
         } else {
-            ColoredEndRodParticle.spawnHead(world, x, y, z, 0, 0, 0, c, scale, age, force);
+            ColoredEndRodParticle.spawnHead(world, x, y, z, vx, vy, vz, c, scale, age, force);
         }
     }
 }

@@ -4,6 +4,7 @@ import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.TextDisplayParams;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainPayload;
+import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainProgressPayload;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.TextChainPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +30,9 @@ public final class ClientDisplayManager {
 
         /** 收到整条音符链时间轴：开始（或按 id 重置）本地播放。 */
         void noteChain(NoteChainPayload payload);
+
+        /** 服务端每 tick 广播的链进度：客户端据此平滑跟随（tick rate / 暂停 / freeze / 回放都正确）。 */
+        void noteChainProgress(NoteChainProgressPayload payload);
 
         /** 移除链：id 为 null 表示移除全部。 */
         void noteChainClear(String id);
@@ -58,6 +62,10 @@ public final class ClientDisplayManager {
 
     public static void noteChain(NoteChainPayload payload) {
         backend.noteChain(payload);
+    }
+
+    public static void noteChainProgress(NoteChainProgressPayload payload) {
+        backend.noteChainProgress(payload);
     }
 
     public static void noteChainClear(String id) {
@@ -94,6 +102,11 @@ public final class ClientDisplayManager {
         public void noteChain(NoteChainPayload payload) {
             LOGGER.debug("[MiauParticleEffects] noteChain id={} notes={}",
                     payload.id(), payload.notes().size());
+        }
+
+        @Override
+        public void noteChainProgress(NoteChainProgressPayload payload) {
+            LOGGER.debug("[MiauParticleEffects] noteChainProgress entries={}", payload.entries().size());
         }
 
         @Override

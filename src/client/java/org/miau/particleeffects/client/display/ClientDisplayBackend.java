@@ -2,12 +2,15 @@ package org.miau.particleeffects.client.display;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
 import org.miau.particleeffects.client.noteblock.NoteChainPlayer;
 import org.miau.particleeffects.client.text.TextChainPlayer;
 import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.TextDisplayParams;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainPayload;
+import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainProgressPayload;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.TextChainPayload;
 
 import java.util.ArrayList;
@@ -26,7 +29,10 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
     private final List<NoteChainPlayer> noteChains = new ArrayList<>();
     /** 存活的歌词链：每条链一套时间轴，到点才创建对应的文字实例。 */
     private final List<TextChainPlayer> textChains = new ArrayList<>();
-    private ClientLevel lastWorld;
+    /** 上一次 tick 时所在的维度；只有维度变化才清空（replay 重建 ClientLevel 不算换世界）。 */
+    private ResourceKey<Level> lastDimension;
+    /** 同一条链在这段时间内重复下发时视为抖动，直接忽略（单位 tick）。 */
+    private static final long REPLAY_DEBOUNCE_TICKS = 2L;
 
     private ClientDisplayBackend() {
     }
@@ -111,9 +117,42 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
 
     @Override
     public void noteChain(NoteChainPayload payload) {
+        // 同一个 id 在极短时间内重复下发（红石信号抖动、replay 重复投递）时忽略：
+        // 否则弹力球会被反复重置回起点，看起来就是「闪烁 / 不稳定 / 球没了」。
+        for (int i = 0; i < noteChains.size(); i++) {
+            NoteChainPlayer chain = noteChains.get(i);
+            if (chain.id().equals(payload.id()) && chain.elapsedTicks() < REPLAY_DEBOUNCE_TICKS) {
+                return;
+            }
+        }
         // 同一锚点（同 id）再次触发 = 重置该链：先移除旧链，再以新时间轴从锚点重播。
         noteChains.removeIf(chain -> chain.id().equals(payload.id()));
         noteChains.add(new NoteChainPlayer(payload));
+    }
+
+    @Override
+    public void noteChainProgress(NoteChainProgressPayload payload) {
+        for (NoteChainProgressPayload.ProgressEntry entry : payload.entries()) {
+            boolean matched = false;
+            for (int i = 0; i < noteChains.size(); i++) {
+                NoteChainPlayer chain = noteChains.get(i);
+                if (chain.id().equals(entry.id())) {
+                    chain.onServerProgress(entry.elapsed());
+                    matched = true;
+                    break;
+                }
+            }
+            if (matched) {
+                continue;
+            }
+            for (int i = 0; i < textChains.size(); i++) {
+                TextChainPlayer chain = textChains.get(i);
+                if (chain.id().equals(entry.id())) {
+                    chain.onServerProgress(entry.elapsed());
+                    break;
+                }
+            }
+        }
     }
 
     @Override
@@ -161,12 +200,17 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
         }
         ClientLevel world = client.level;
         if (world == null) {
-            lastWorld = null;
+            lastDimension = null;
             return;
         }
-        if (lastWorld != world) {
-            // 切换维度/世界：旧世界的粒子已随世界卸载消失，显示实例与弹力球一并清空，避免在新世界残留旧坐标的“残影”。
-            lastWorld = world;
+        // 只在「真的换了维度」时清空。
+        // 不能按 ClientLevel 对象变化判断：replay（尤其拖动进度条）会重建 ClientLevel，
+        // 但世界还是同一个世界；按对象清空会让正在播放的弹力球/歌词直接消失。
+        ResourceKey<Level> dimension = world.dimension();
+        if (lastDimension == null) {
+            lastDimension = dimension;
+        } else if (!lastDimension.equals(dimension)) {
+            lastDimension = dimension;
             instances.clear();
             noteChains.clear();
             textChains.clear();
@@ -183,7 +227,7 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
                 it.remove();
             }
         }
-        // 弹力球只在这里推进时间轴；粒子由 frame() 按渲染帧生成。
+        // 弹力球只在这里推进时间轴；粒子由 frame() 按渲染帧生成（帧回调失效时链内部会自己兜底）。
         Iterator<NoteChainPlayer> chainIt = noteChains.iterator();
         while (chainIt.hasNext()) {
             NoteChainPlayer chain = chainIt.next();
@@ -196,7 +240,7 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
         Iterator<TextChainPlayer> textIt = textChains.iterator();
         while (textIt.hasNext()) {
             TextChainPlayer chain = textIt.next();
-            chain.tick();
+            chain.tick(world);
             if (chain.isRemoved()) {
                 textIt.remove();
             }
@@ -204,13 +248,12 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
     }
 
     /**
-     * 渲染帧驱动（约 60FPS）：用帧间插值系数重新求位置并生成粒子。
-     * 原版粒子只在 20Hz 的 tick 上更新位置，渲染时仅做两 tick 之间的直线插值，
-     * 高速运动会出现明显折线感；这里按帧求值即可得到连续曲线。
+     * 渲染帧驱动（约 60FPS）：求解位置并生成粒子。
      *
-     * @param partialTick 自上一个客户端 tick 起经过的比例（0~1）
+     * @param partialTick 游戏刻内的插值系数（0~1），只给「以 tick 为单位」的离散动画用
+     * @param deltaTicks  本帧流逝的游戏时间（tick，含小数），球/歌词链用它做连续推进
      */
-    public void frame(ClientLevel world, float partialTick) {
+    public void frame(ClientLevel world, float partialTick, float deltaTicks) {
         for (int i = 0; i < instances.size(); i++) {
             DisplayInstance inst = instances.get(i);
             if (inst.frameDriven()) {
@@ -218,7 +261,10 @@ public final class ClientDisplayBackend implements ClientDisplayManager.Backend 
             }
         }
         for (int i = 0; i < noteChains.size(); i++) {
-            noteChains.get(i).frame(world, partialTick);
+            noteChains.get(i).frame(world, deltaTicks);
+        }
+        for (int i = 0; i < textChains.size(); i++) {
+            textChains.get(i).frame(world, deltaTicks);
         }
     }
 }

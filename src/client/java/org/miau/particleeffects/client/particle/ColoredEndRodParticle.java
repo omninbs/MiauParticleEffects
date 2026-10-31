@@ -1,5 +1,7 @@
 package org.miau.particleeffects.client.particle;
 
+import org.miau.particleeffects.client.ClientClock;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.ParticleProvider;
@@ -10,7 +12,6 @@ import org.miau.particleeffects.config.ConfigManager;
 import org.miau.particleeffects.mixin.client.ParticleEngineInvoker;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.particle.MiauParticleEffectsParticles;
-import org.miau.particleeffects.client.ClientClock;
 
 /**
  * 彩色末地烛粒子：与末地烛(end_rod)粒子一致的外观（glitter 精灵、发光、后半生淡出），
@@ -166,11 +167,16 @@ public class ColoredEndRodParticle extends SimpleAnimatedParticle {
     /**
      * 快速生成路径：直接构造粒子并塞进粒子引擎。
      *
-     * <p>原版 {@code ClientLevel#addParticle} 会先按「粒子效果」视频设置（all / decreased / minimal）
-     * 随机丢弃粒子（最弱档只保留 1/10），再做 32 格距离剔除。这里保留距离剔除（省性能），
-     * 但跳过随机抽样，也跳过注册表查找 + provider 分发，让模组的粒子数量只受硬件限制。</p>
+     * <p>原版 {@code ClientLevel#addParticle} 有两道会「吃掉」粒子的闸门：</p>
+     * <ol>
+     *   <li>按「粒子效果」视频设置（all / decreased / minimal）随机丢弃，最弱档只保留 1/10；</li>
+     *   <li>以相机为圆心做 32 格距离剔除。</li>
+     * </ol>
+     * <p>第 2 条对红石音乐是致命的：玩家站在远处看整体效果、或 replay 相机拉到高空时，
+     * 弹力球会**整颗消失**（粒子 2 tick 后就没了）。所以这里两道闸门都跳过：
+     * 模组的演出粒子由自己的时间轴决定是否生成，不看距离、不看视频设置。</p>
      *
-     * <p>返回 true 表示「已处理」（已生成或按距离丢弃），调用方不要再走原版路径。</p>
+     * <p>返回 true 表示「已处理」，调用方不要再走原版路径。</p>
      */
     private static boolean spawnFast(ClientLevel world, SimpleParticleType type,
                                      double x, double y, double z,
@@ -181,15 +187,6 @@ public class ColoredEndRodParticle extends SimpleAnimatedParticle {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.particleEngine == null) {
             return false;
-        }
-        if (!force && client.player != null) {
-            // 与原版一致的 32 格距离剔除（1024 = 32²），远处粒子没必要生成。
-            double dx = client.player.getX() - x;
-            double dy = client.player.getY() - y;
-            double dz = client.player.getZ() - z;
-            if (dx * dx + dy * dy + dz * dz > 1024.0) {
-                return true;
-            }
         }
         SpriteSet sprites = type == MiauParticleEffectsParticles.COLORED_HEAD ? headSprites : rodSprites;
         if (sprites == null) {

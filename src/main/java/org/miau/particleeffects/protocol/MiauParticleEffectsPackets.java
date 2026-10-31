@@ -27,6 +27,7 @@ public final class MiauParticleEffectsPackets {
         PayloadTypeRegistry.clientboundPlay().register(ClearPayload.ID, ClearPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NoteChainPayload.ID, NoteChainPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NoteChainClearPayload.ID, NoteChainClearPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(NoteChainProgressPayload.ID, NoteChainProgressPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(TextChainPayload.ID, TextChainPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(TextChainClearPayload.ID, TextChainClearPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ExParticlePayload.ID, ExParticlePayload.CODEC);
@@ -234,6 +235,62 @@ public final class MiauParticleEffectsPackets {
                 buf.writeBoolean(value.id() != null);
                 if (value.id() != null) {
                     buf.writeUtf(value.id());
+                }
+            }
+        };
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return ID;
+        }
+    }
+
+    /**
+     * 音符链的**服务端进度**：服务端每个（或每若干个）游戏 tick 广播一次。
+     *
+     * <p>为什么需要它：客户端 tick 事件的频率并不随 {@code /tick rate} 变化，
+     * 客户端本地也拿不到可靠的服务端 tick 时间，所以「按本地 tick 计时」的动画在
+     * {@code /tick rate} 改变后仍以 20 tick/s 走。而服务端 tick 频率是权威的
+     * （音符盒触发特效就是靠它才正常变速的），因此把链的时间轴交给服务端广播，
+     * 客户端只做平滑跟随：</p>
+     * <ul>
+     *   <li>{@code /tick rate} 变速 → 服务端 tick 变快/变慢 → 进度增长同步变化；</li>
+     *   <li>暂停 / {@code /tick freeze} → 服务端不 tick → 进度不再更新 → 客户端冻结；</li>
+     *   <li>回放 → 这些包被录制重放 → 与音乐严格对齐。</li>
+     * </ul>
+     * <p>包体极小（每链 id + 一个 float），服务端 tick 频率 ≤ 100 时可忽略流量。</p>
+     */
+    public record NoteChainProgressPayload(List<ProgressEntry> entries) implements CustomPacketPayload {
+
+        /** 单条链的进度：id + 已播放的 tick 数（服务端权威值）。 */
+        public record ProgressEntry(String id, float elapsed) {
+        }
+
+        private static final int MAX_ENTRIES = 256;
+
+        public static final CustomPacketPayload.Type<NoteChainProgressPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "note_chain_progress"));
+
+        public static final StreamCodec<FriendlyByteBuf, NoteChainProgressPayload> CODEC = new StreamCodec<>() {
+            @Override
+            public NoteChainProgressPayload decode(FriendlyByteBuf buf) {
+                int count = buf.readVarInt();
+                if (count < 0 || count > MAX_ENTRIES) {
+                    count = 0;
+                }
+                List<ProgressEntry> entries = new ArrayList<>(count);
+                for (int i = 0; i < count; i++) {
+                    entries.add(new ProgressEntry(buf.readUtf(128), buf.readFloat()));
+                }
+                return new NoteChainProgressPayload(entries);
+            }
+
+            @Override
+            public void encode(FriendlyByteBuf buf, NoteChainProgressPayload value) {
+                buf.writeVarInt(value.entries().size());
+                for (ProgressEntry entry : value.entries()) {
+                    buf.writeUtf(entry.id());
+                    buf.writeFloat(entry.elapsed());
                 }
             }
         };

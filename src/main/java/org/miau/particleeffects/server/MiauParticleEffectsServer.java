@@ -319,6 +319,9 @@ public final class MiauParticleEffectsServer {
             long now = server.getTickCount();
             TEXT_CHAINS.values().removeIf(chain -> !chain.isActive(now));
         }
+        // 每 tick 广播存活链的进度：客户端据此平滑跟随。
+        // 这样 /tick rate 变速、暂停、/tick freeze、回放都与服务端（音乐）严格对齐。
+        broadcastChainProgress(server);
         if (!noteTriggerEffect || NOTE_TRIGGERS.isEmpty() || CHAINS.isEmpty()) {
             return;
         }
@@ -331,8 +334,35 @@ public final class MiauParticleEffectsServer {
         }
     }
 
-    private static void fireNoteTrigger(MinecraftServer server, ActiveChain chain) {
-        MiauParticleEffectsPackets.NoteChainPayload payload = chain.payload();
+    /**
+     * 广播存活链的服务端进度（id + 已播放 tick 数）。
+     *
+     * <p>服务端 tick 频率就是 `{@code /tick rate}` 的权威值，所以客户端收到的进度天然跟随变速；
+     * 暂停 / {@code /tick freeze} 时服务端不 tick，进度不再变化，客户端会自动冻结；
+     * 回放时这些包被重放，进度与录制的音乐严格一致。</p>
+     */
+    private static void broadcastChainProgress(MinecraftServer server) {
+        if (CHAINS.isEmpty() && TEXT_CHAINS.isEmpty()) {
+            return;
+        }
+        long now = server.getTickCount();
+        List<MiauParticleEffectsPackets.NoteChainProgressPayload.ProgressEntry> entries =
+                new ArrayList<>(CHAINS.size() + TEXT_CHAINS.size());
+        for (ActiveChain chain : CHAINS.values()) {
+            long elapsed = now - chain.payload().startTick();
+            entries.add(new MiauParticleEffectsPackets.NoteChainProgressPayload.ProgressEntry(
+                    chain.payload().id(), (float) Math.max(0, elapsed)));
+        }
+        for (ActiveTextChain chain : TEXT_CHAINS.values()) {
+            long elapsed = now - chain.payload().startTick();
+            entries.add(new MiauParticleEffectsPackets.NoteChainProgressPayload.ProgressEntry(
+                    chain.payload().id(), (float) Math.max(0, elapsed)));
+        }
+        MiauParticleEffectsPackets.broadcast(server,
+                new MiauParticleEffectsPackets.NoteChainProgressPayload(entries));
+    }
+
+    private static void fireNoteTrigger(MinecraftServer server, ActiveChain chain) {        MiauParticleEffectsPackets.NoteChainPayload payload = chain.payload();
         MiauParticleEffectsPackets.NoteChainPayload.Note note = chain.consume();
         int index = chain.nextNote() - 1;
         // 音符盒所在方块坐标，再叠加各条配置各自的相对偏移（~~~ = 该音符盒方块）。

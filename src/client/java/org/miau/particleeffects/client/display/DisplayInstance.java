@@ -134,6 +134,9 @@ public abstract class DisplayInstance {
     /**
      * 阶段进度。partialTick 为当前渲染帧相对上一个 tick 的插值系数，
      * 使动画在渲染帧上连续推进（约 60FPS），而不是每 tick 跳一格。
+     *
+     * <p>插值系数统一先钳到 [0,1]：tick 冻结、replay 变速或补 tick 时原版可能给出
+     * 越界值，直接用会让进度瞬间跳变/回退。</p>
      */
     protected float phaseProgress(float partialTick) {
         int duration = switch (phase) {
@@ -145,7 +148,15 @@ public abstract class DisplayInstance {
         if (duration <= 0) {
             return 1f;
         }
-        return Math.min(1f, (tickCounter + partialTick) / duration);
+        return Math.min(1f, (tickCounter + clampPartial(partialTick)) / duration);
+    }
+
+    /** 把插值系数钳到 [0,1]，并挡掉 NaN。 */
+    protected static float clampPartial(float partialTick) {
+        if (!(partialTick >= 0f)) {
+            return 0f;
+        }
+        return Math.min(1f, partialTick);
     }
 
     protected float phaseProgress() {
@@ -181,7 +192,7 @@ public abstract class DisplayInstance {
         if (currentTick >= moveTicks) {
             t = 1f;
         } else {
-            t = (currentTick + partialTick) / moveTicks;
+            t = (currentTick + clampPartial(partialTick)) / moveTicks;
         }
         float eased = move.curve().apply(Math.min(1f, Math.max(0f, t)));
         return move.delta().scale(eased);
