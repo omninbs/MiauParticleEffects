@@ -36,6 +36,7 @@ import org.miau.particleeffects.model.Orientation;
 import org.miau.particleeffects.model.RotationSpec;
 import org.miau.particleeffects.model.TextDisplayParams;
 import org.miau.particleeffects.exparticle.command.ExParticleCommand;
+import org.miau.particleeffects.protocol.MiauParticleEffectsPackets;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainPayload;
 import org.miau.particleeffects.server.MiauParticleEffectsServer;
 
@@ -50,6 +51,7 @@ public final class MiauParticleEffectsCommand {
             §e/mpe help [子命令]§r 查看帮助，可指定子命令查看详细参数
             §e/mpe density <间距>§r 设置全局像素密度(0.01~1.0，越小越清晰)
             §e/mpe text "<文字>" <x> <y> <z> [options]§r 显示文字（可用 § 代码）
+            §e/mpe text chain <锚点> <歌词段> [options]§r 一条命令下发整首歌的歌词时间轴
             §e/mpe effect <cube|tetra|explosion|wave> <x> <y> <z> [options]§r 附加特效
             §e/mpe noteblock <chain|clear|status>§r 数据驱动音符盒弹力球
             §e/mpe clear [all|text|effect|id=<ID>]§r 清除显示内容
@@ -93,15 +95,49 @@ public final class MiauParticleEffectsCommand {
               move=       dx,dy,dz,时长,曲线  显示期位移
               id=         自定义ID，供 clear id= 使用
               force=      强制粒子显示，不受距离裁剪（可能增加客户端开销） 默认 false
-            入场/出场动画（同类互斥，可跨类组合，逗号分隔）：
+            入场/出场动画（同类互斥，跨类可叠加，逗号分隔；样式可省略，如 in=typewriter）：
               slide:up|down|left|right     滑入/滑出
               scale:shrink|enlarge         缩小/放大
               spacing:converge|disperse    靠拢/分散
               clarity:clear|blur           变清晰/变模糊
+              typewriter:left|right|center 逐字打字
+              wipe:left|right|up|down      擦除显现
+              flip:horizontal|vertical     翻转
+              scatter:gather|burst         随机聚拢/径向爆散
+              bounce:drop|rise             弹跳落位
+              zoom:in|out                  推近/拉远（粒子尺寸同步变化）
+              rotate:roll|yaw|pitch        旋转
+              drop:down|up|left|right      加速坠落
+            整首歌的歌词时间轴请用 §e/mpe text chain§r（见 /mpe help textchain）
             示例：
               /mpe text "§4燃§6烧§b吧" 100 64 100 color=#FFD700
               /mpe text "歌词" 100 64 100 in=slide:up,scale:enlarge fade=in enter=20 duration=80 exit=20
+              /mpe text "逐字" 100 64 100 in=typewriter:left fade=both
               /mpe text "移动" 100 64 100 move=0,2,0,20,linear
+            """;
+
+    private static final String HELP_TEXT_CHAIN = """
+            §6/mpe text chain <锚点> <歌词段> [选项]§r 一条命令下发整首歌的歌词时间轴
+            生成器在链式结构起点放一个脉冲命令方块执行它，客户端按表在各自时刻显示文字。
+            参数：
+              <锚点>    ~~~ = 命令方块自身所在方块坐标；或 x,y,z 绝对坐标
+              <歌词段>  x,y,z,start[,duration],文字[;段内选项]|...  用 | 分隔每段
+                x,y,z      相对锚点的方块偏移（可为小数、负数），即文字中心位置
+                start      从命令方块执行那一刻算起的 tick（绝对时刻，不是间隔）
+                duration   显示时长（tick，20 tick = 1 秒），省略时用 duration= 选项（默认 100）
+                文字       支持 § 与 & 颜色码；空格写成 _；不能含 | ; ,
+                段内选项   与全局选项同名，覆盖全局值
+            全局选项（空格分隔，写在最后）：
+              density= 像素密度(0.01~1)   scale= 字号(方块)   color= / gradient= 颜色
+              in= 入场动画   out= 出场动画   fade=in|out|both   enter= / exit= 动画时长(tick)
+              curve= 曲线   towards= 朝向   move= 位移   spread= 间距倍率
+              force= 强制显示   linger= 链结束后再保留的 tick（-1 常驻）   id= 链 ID
+            子命令：
+              /mpe text chain clear [id=<ID>]   移除全部/指定歌词链
+              /mpe text chain status           查看存活的歌词链
+            示例：
+              /mpe text chain ~~~ 0,1,0,0,60,§6第一句|0,2,0,70,60,§e第二句 in=typewriter fade=both
+              /mpe text chain ~~~ 0,0,0,0,40,Hello_World;color=#FFD700 scale=1.5
             """;
 
     private static final String HELP_EFFECT = """
@@ -226,6 +262,35 @@ public final class MiauParticleEffectsCommand {
         return builder.buildFuture();
     };
 
+    /** 文字选项补全（含动画样式的常用写法）。 */
+    private static final String[] TEXT_OPTION_KEYS = {
+            "scale=", "color=", "gradient=", "towards=", "duration=", "enter=", "exit=", "delay=",
+            "curve=", "in=", "out=", "fade=", "spread=", "density=", "move=", "id=", "force="};
+
+    private static final String[] TEXT_OPTION_VALUES = {
+            "in=typewriter", "in=wipe", "in=slide:up", "in=scale:enlarge", "in=zoom", "in=flip",
+            "in=bounce", "in=drop", "in=rotate", "in=scatter", "in=spacing:converge", "in=clarity:clear",
+            "out=typewriter", "out=wipe", "out=slide:down", "out=scale:shrink", "out=zoom", "out=flip",
+            "out=bounce", "out=drop", "out=rotate", "out=scatter", "fade=both", "fade=in", "fade=out",
+            "curve=ease-out", "curve=ease-in-out", "curve=bounce"};
+
+    private static final SuggestionProvider<CommandSourceStack> TEXT_OPTION_SUGGESTIONS = (ctx, builder) -> {
+        String input = builder.getRemaining().toLowerCase(Locale.ROOT);
+        int space = input.lastIndexOf(' ');
+        String token = space >= 0 ? input.substring(space + 1) : input;
+        for (String key : TEXT_OPTION_KEYS) {
+            if (key.startsWith(token)) {
+                builder.suggest(key);
+            }
+        }
+        for (String value : TEXT_OPTION_VALUES) {
+            if (value.startsWith(token)) {
+                builder.suggest(value);
+            }
+        }
+        return builder.buildFuture();
+    };
+
     private static final String HELP_CLEAR = """
             §6/mpe clear [all|text|effect|id=<ID>]§r 清除显示内容
             参数：
@@ -273,6 +338,7 @@ public final class MiauParticleEffectsCommand {
         return switch (sub) {
             case "density" -> HELP_DENSITY;
             case "text" -> HELP_TEXT;
+            case "textchain" -> HELP_TEXT_CHAIN;
             case "effect" -> HELP_EFFECT;
             case "noteblock", "note", "nb" -> HELP_NOTEBLOCK;
             case "triggereffect", "trigger" -> HELP_TRIGGER_EFFECT;
@@ -364,13 +430,45 @@ public final class MiauParticleEffectsCommand {
                     Feedback.send(ctx.getSource(), HELP_TEXT);
                     return 1;
                 })
+                .then(textChainNode())
                 .then(Commands.argument("text", StringArgumentType.string())
                         .then(Commands.argument("pos", Vec3Argument.vec3())
                                 .executes(ctx -> executeText(ctx, Options.EMPTY))
                                 .then(Commands.argument("options", StringArgumentType.greedyString())
+                                        .suggests(TEXT_OPTION_SUGGESTIONS)
                                         .executes(ctx -> executeText(
                                                 ctx, Options.parse(StringArgumentType.getString(ctx, "options")))))));
     }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> textChainNode() {
+        return Commands.literal("chain")
+                .executes(ctx -> {
+                    Feedback.send(ctx.getSource(), HELP_TEXT_CHAIN);
+                    return 1;
+                })
+                .then(Commands.literal("clear")
+                        .executes(ctx -> executeTextChainClear(ctx, null))
+                        .then(Commands.argument("options", StringArgumentType.greedyString())
+                                .executes(ctx -> executeTextChainClear(
+                                        ctx, StringArgumentType.getString(ctx, "options")))))
+                .then(Commands.literal("status").executes(MiauParticleEffectsCommand::executeTextChainStatus))
+                .then(Commands.argument("args", StringArgumentType.greedyString())
+                        .suggests(TEXT_CHAIN_SUGGESTIONS)
+                        .executes(ctx -> executeTextChain(ctx, StringArgumentType.getString(ctx, "args"))));
+    }
+
+    /** 歌词链首两个参数：锚点 + 段落数据。给出一个可直接改的样例，降低手写成本。 */
+    private static final SuggestionProvider<CommandSourceStack> TEXT_CHAIN_SUGGESTIONS = (ctx, builder) -> {
+        String remaining = builder.getRemaining();
+        if (!remaining.contains(" ")) {
+            builder.suggest("~~~");
+            return builder.buildFuture();
+        }
+        if (!remaining.contains("|")) {
+            builder.suggest("0,0,0,0,60,文字");
+        }
+        return builder.buildFuture();
+    };
 
     private static int executeText(CommandContext<CommandSourceStack> ctx, Options options)
             throws CommandSyntaxException {
@@ -394,7 +492,7 @@ public final class MiauParticleEffectsCommand {
 
     private static TextDisplayParams parseText(String text, Vec3 pos, Options o) {
         o.checkKeys("scale", "color", "gradient", "force", "towards", "duration", "enter", "exit", "delay",
-                "curve", "in", "out", "fade", "spread", "move", "id");
+                "curve", "in", "out", "fade", "spread", "move", "id", "density");
         float scale = (float) o.optDouble("scale", ConfigManager.get().defaultScale, 0.05, 64);
         ColorSpec cs = resolveColorSpec(o);
         Orientation orientation = o.has("towards") ? parseTowards(o.optString("towards", "")) : Orientation.SOUTH;
@@ -407,14 +505,203 @@ public final class MiauParticleEffectsCommand {
         AnimationSet exitSet = AnimationSet.parse(o.optString("out", ""));
         FadeOption fade = requireFade(o.optString("fade", "none"));
         float spread = (float) o.optDouble("spread", 3.0, 1.0, 100);
+        double density = o.optDouble("density", ConfigManager.get().density, 0.01, 1.0);
         MoveSpec move = o.has("move") ? parseMove(o.optString("move", "")) : null;
         String id = o.optString("id", "");
         boolean force = o.optBool("force", false);
         return new TextDisplayParams(
-                text, pos, scale, cs.color(), cs.mode(), cs.gradientColors(), orientation,
+                decodeColorCodes(text), pos, scale, cs.color(), cs.mode(), cs.gradientColors(), orientation,
                 duration, enter, exit, delay, curve,
-                entry, exitSet, fade, spread, ConfigManager.get().density, move,
+                entry, exitSet, fade, spread, density, move,
                 id.isBlank() ? null : id, force);
+    }
+
+    /** 允许用 &amp; 代替 § 写颜色码（命令方块里输入更省事）。 */
+    private static String decodeColorCodes(String text) {
+        if (text.indexOf('&') < 0) {
+            return text;
+        }
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '&' && i + 1 < text.length()) {
+                char code = Character.toLowerCase(text.charAt(i + 1));
+                boolean valid = (code >= '0' && code <= '9') || (code >= 'a' && code <= 'f')
+                        || code == 'k' || code == 'l' || code == 'm' || code == 'n' || code == 'o' || code == 'r';
+                if (valid) {
+                    sb.append('\u00a7').append(code);
+                    i++;
+                    continue;
+                }
+            }
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    // ------------------------------------------------------------------ text chain
+
+    /** 歌词链单段最多字符数，防止超长数据把客户端内存吃满。 */
+    private static final int MAX_CHAIN_SEGMENTS = 4096;
+
+    private static int executeTextChain(CommandContext<CommandSourceStack> ctx, String raw)
+            throws CommandSyntaxException {
+        CommandSourceStack src = ctx.getSource();
+        String trimmed = raw == null ? "" : raw.trim();
+        if (trimmed.isEmpty()) {
+            Feedback.send(src, HELP_TEXT_CHAIN);
+            return 1;
+        }
+        // 前两个参数（锚点、段落数据）不允许含空格，其余全部作为选项。
+        String[] tokens = trimmed.split("\\s+");
+        if (tokens.length < 2) {
+            throw Feedback.error("用法：/mpe text chain <锚点> <歌词段> [选项]（见 /mpe help textchain）");
+        }
+        BlockPos anchor = parseAnchor(src, tokens[0]);
+        String segmentsRaw = tokens[1];
+        String optionsRaw = tokens.length > 2
+                ? String.join(" ", java.util.Arrays.copyOfRange(tokens, 2, tokens.length))
+                : "";
+        Options global;
+        List<MiauParticleEffectsPackets.TextChainPayload.Entry> entries;
+        String chainId;
+        int linger;
+        try {
+            global = Options.parse(optionsRaw);
+            chainId = global.optString("id", "text-" + anchor.asLong());
+            linger = global.optInt("linger", 0, -1, 72000);
+            entries = parseTextChainSegments(segmentsRaw, anchor, global.without("id", "linger"));
+        } catch (IllegalArgumentException e) {
+            throw Feedback.error(e.getMessage());
+        }
+        if (entries.isEmpty()) {
+            throw Feedback.error("至少需要 1 段歌词");
+        }
+        MiauParticleEffectsPackets.TextChainPayload payload = new MiauParticleEffectsPackets.TextChainPayload(
+                chainId, entries, linger, src.getServer().getTickCount());
+        MiauParticleEffectsServer.textChain(src.getServer(), payload);
+        int totalTicks = 0;
+        for (MiauParticleEffectsPackets.TextChainPayload.Entry entry : entries) {
+            totalTicks = Math.max(totalTicks, entry.startTick() + entry.params().totalTicks());
+        }
+        Feedback.send(src, "已下发歌词链 id=" + chainId + " 锚点=" + anchor.toShortString()
+                + " 段数=" + entries.size() + " 总时长=" + totalTicks + " tick（"
+                + String.format(Locale.ROOT, "%.1f", totalTicks / 20.0) + " 秒）"
+                + (linger < 0 ? " 常驻" : " linger=" + linger));
+        return 1;
+    }
+
+    /**
+     * 解析 {@code x,y,z,start,duration,文字[;段内选项]|...}。
+     *
+     * <p>文字里不能出现 {@code |}、{@code ;}、换行，空格请写成下划线 {@code _}。</p>
+     */
+    private static List<MiauParticleEffectsPackets.TextChainPayload.Entry> parseTextChainSegments(
+            String raw, BlockPos anchor, Options global) {
+        List<MiauParticleEffectsPackets.TextChainPayload.Entry> entries = new ArrayList<>();
+        String[] segments = raw.split("\\|");
+        for (int index = 0; index < segments.length; index++) {
+            String segment = segments[index].trim();
+            if (segment.isEmpty()) {
+                continue;
+            }
+            String[] parts = segment.split(",", 6);
+            if (parts.length < 5) {
+                throw new IllegalArgumentException("第 " + (index + 1)
+                        + " 段格式错误，应为 x,y,z,start[,duration],文字（收到 '" + segment + "'）");
+            }
+            double ox = parseDouble(parts[0], "第 " + (index + 1) + " 段 x");
+            double oy = parseDouble(parts[1], "第 " + (index + 1) + " 段 y");
+            double oz = parseDouble(parts[2], "第 " + (index + 1) + " 段 z");
+            int start = (int) parseDouble(parts[3], "第 " + (index + 1) + " 段 start");
+            // 5 段写法可省略 duration，此时用全局 duration=（默认 100）。
+            int duration;
+            String rest;
+            if (parts.length >= 6) {
+                duration = (int) parseDouble(parts[4], "第 " + (index + 1) + " 段 duration");
+                rest = parts[5];
+            } else {
+                duration = global.optInt("duration", 100, 1, 72000);
+                rest = parts[4];
+            }
+            if (start < 0) {
+                throw new IllegalArgumentException("第 " + (index + 1) + " 段的 start 不能为负（单位 tick）");
+            }
+            if (duration < 1) {
+                throw new IllegalArgumentException("第 " + (index + 1) + " 段的 duration 至少为 1 tick");
+            }
+            String textPart = rest;
+            Options segmentOptions = Options.EMPTY;
+            int semi = rest.indexOf(';');
+            if (semi >= 0) {
+                textPart = rest.substring(0, semi);
+                segmentOptions = Options.parse(rest.substring(semi + 1).replace(';', ' '));
+            }
+            String text = decodeChainText(textPart);
+            if (text.isBlank()) {
+                throw new IllegalArgumentException("第 " + (index + 1) + " 段文字为空");
+            }
+            Options merged = global.overlay(segmentOptions)
+                    .with("duration", Integer.toString(duration))
+                    .with("id", "");
+            if (merged.has("delay")) {
+                throw new IllegalArgumentException(
+                        "第 " + (index + 1) + " 段不支持 delay=，请用段字段 start 控制显示时刻");
+            }
+            Vec3 pos = new Vec3(anchor.getX() + ox, anchor.getY() + oy, anchor.getZ() + oz);
+            TextDisplayParams params = parseText(text, pos, merged);
+            entries.add(new MiauParticleEffectsPackets.TextChainPayload.Entry(start, params));
+            if (entries.size() > MAX_CHAIN_SEGMENTS) {
+                throw new IllegalArgumentException("歌词段数量超过上限 " + MAX_CHAIN_SEGMENTS);
+            }
+        }
+        entries.sort(java.util.Comparator.comparingInt(
+                MiauParticleEffectsPackets.TextChainPayload.Entry::startTick));
+        return entries;
+    }
+
+    /** 段落文字：下划线代表空格，同时支持 &amp; 颜色码（由 parseText 统一转换）。 */
+    private static String decodeChainText(String raw) {
+        return raw.replace('_', ' ').trim();
+    }
+
+    private static int executeTextChainClear(CommandContext<CommandSourceStack> ctx, String optionsRaw)
+            throws CommandSyntaxException {
+        CommandSourceStack src = ctx.getSource();
+        if (optionsRaw == null || optionsRaw.isBlank()) {
+            int removed = MiauParticleEffectsServer.textChainClearAll(src.getServer());
+            Feedback.send(src, "已清除全部歌词链（" + removed + " 条）");
+            return 1;
+        }
+        String raw = optionsRaw.trim();
+        if (!raw.toLowerCase(Locale.ROOT).startsWith("id=")) {
+            throw Feedback.error("无效参数 '" + raw + "'，用法：/mpe text chain clear [id=<id>]");
+        }
+        String id = raw.substring(3).trim();
+        if (id.isEmpty()) {
+            throw Feedback.error("id 不能为空");
+        }
+        if (!MiauParticleEffectsServer.textChainClear(src.getServer(), id)) {
+            throw Feedback.error("找不到歌词链 id=" + id);
+        }
+        Feedback.send(src, "已清除歌词链 id=" + id);
+        return 1;
+    }
+
+    private static int executeTextChainStatus(CommandContext<CommandSourceStack> ctx) {
+        CommandSourceStack src = ctx.getSource();
+        List<MiauParticleEffectsPackets.TextChainPayload> chains =
+                MiauParticleEffectsServer.textChains(src.getServer());
+        if (chains.isEmpty()) {
+            Feedback.send(src, "当前没有存活的歌词链");
+            return 1;
+        }
+        Feedback.send(src, "当前存活歌词链 " + chains.size() + " 条：");
+        for (MiauParticleEffectsPackets.TextChainPayload chain : chains) {
+            Feedback.send(src, "  id=" + chain.id() + " 段数=" + chain.entries().size()
+                    + (chain.linger() < 0 ? " 常驻" : " linger=" + chain.linger()));
+        }
+        return 1;
     }
 
     // ------------------------------------------------------------------ effect
@@ -462,12 +749,13 @@ public final class MiauParticleEffectsCommand {
         // wave 走简化分支：只保留半径(size)、速度(speed)、id，其余参数一律不解析。
         // 颜色固定为水色，不做朝向/旋转/动画/位移等复杂控制。
         if (type == EffectType.WAVE) {
-            o.checkKeys("size", "speed", "id");
+            o.checkKeys("size", "speed", "id", "force");
             float size = (float) o.optDouble("size", 5.0, 0.05, 256);
             float waveSpeed = o.has("speed")
                     ? (float) o.optDouble("speed", 2.0, 0.1, 1024)
                     : size / 2.0f;
             String id = o.optString("id", "");
+            boolean force = o.optBool("force", false);
             // 水波固定参数：水色、无朝向/旋转、duration 按「扩散到最大半径所需时间 + 淡出」自动计算
             int expandTicks = (int) Math.ceil(size / Math.max(0.005, waveSpeed / 20f));
             int duration = Math.max(expandTicks, 2);
@@ -477,7 +765,7 @@ public final class MiauParticleEffectsCommand {
                     duration, 0, Math.max(2, duration / 4), 0,
                     Easings.EASE_OUT, AnimationSet.EMPTY, AnimationSet.EMPTY,
                     FadeOption.NONE, null,
-                    id.isBlank() ? null : id, false);
+                    id.isBlank() ? null : id, force);
         }
         o.checkKeys("size", "speed", "color", "gradient", "force", "towards", "rotate", "duration", "enter", "exit", "delay",
                 "curve", "in", "out", "fade", "move", "id");
@@ -573,8 +861,8 @@ public final class MiauParticleEffectsCommand {
                         .executes(ctx -> executeNoteChainClear(ctx, StringArgumentType.getString(ctx, "options"))));
     }
 
-    /** 音符数量上限：单条命令 32500 字符约合 3000 个音符，这里留足余量同时防住异常数据。 */
-    private static final int MAX_NOTES = 8192;
+    /** 音符数量上限：仅用于挡住异常数据，实际先受命令 32500 字符长度限制。 */
+    private static final int MAX_NOTES = 16384;
 
     private static int executeNoteChain(CommandContext<CommandSourceStack> ctx, String raw)
             throws CommandSyntaxException {

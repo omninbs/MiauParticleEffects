@@ -41,7 +41,7 @@ public final class PayloadCodecs {
         @Override
         public AnimationSet decode(FriendlyByteBuf buf) {
             int count = buf.readVarInt();
-            if (count <= 0) {
+            if (count <= 0 || count > 32) {
                 return AnimationSet.EMPTY;
             }
             List<org.miau.particleeffects.animation.AnimationToken> tokens = new ArrayList<>();
@@ -105,6 +105,9 @@ public final class PayloadCodecs {
             }
             List<Integer> gradientColors = new ArrayList<>();
             int gc = buf.readVarInt();
+            if (gc < 0 || gc > 256) {
+                gc = 0;
+            }
             for (int i = 0; i < gc; i++) {
                 gradientColors.add(buf.readInt());
             }
@@ -197,6 +200,9 @@ public final class PayloadCodecs {
             }
             List<Integer> gradientColors = new ArrayList<>();
             int gc = buf.readVarInt();
+            if (gc < 0 || gc > 256) {
+                gc = 0;
+            }
             for (int i = 0; i < gc; i++) {
                 gradientColors.add(buf.readInt());
             }

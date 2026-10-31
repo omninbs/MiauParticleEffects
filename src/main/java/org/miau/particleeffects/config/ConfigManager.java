@@ -47,6 +47,12 @@ public final class ConfigManager {
         if (c.defaultScale <= 0 || c.defaultScale > 64) {
             c.defaultScale = 1.0F;
         }
+        if (c.maxTextPixels < 0) {
+            c.maxTextPixels = 0;
+        }
+        if (c.maxEffectPoints < 0) {
+            c.maxEffectPoints = 0;
+        }
         return c;
     }
 

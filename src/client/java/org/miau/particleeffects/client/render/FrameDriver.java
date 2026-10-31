@@ -1,6 +1,5 @@
 package org.miau.particleeffects.client.render;
 
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import org.miau.particleeffects.client.display.ClientDisplayBackend;
 
@@ -16,22 +15,15 @@ import org.miau.particleeffects.client.display.ClientDisplayBackend;
  */
 public final class FrameDriver {
 
-    /** 1 个游戏 tick = 50ms。 */
-    private static final double NANOS_PER_TICK = 50_000_000.0;
     /** 同一渲染帧可能被多个回调命中，用 2ms 阈值去重，避免重复生成粒子。 */
     private static final long FRAME_DEDUP_NANOS = 2_000_000L;
-    /** 插值系数上限：超过说明 tick 边界时钟异常（长时间卡顿/暂停），退回 tick 起点避免瞬移。 */
-    private static final double MAX_PARTIAL = 1.5;
 
-    private static long lastTickNanos;
     private static long lastFrameNanos;
 
     private FrameDriver() {
     }
 
     public static void init() {
-        // tick 末尾即下一个 tick 的起点，此刻插值系数约为 0。
-        ClientTickEvents.END_CLIENT_TICK.register(client -> lastTickNanos = System.nanoTime());
         /*? if >=26.1 {*/
         net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents.END_EXTRACTION
                 .register(context -> onFrame());
@@ -52,10 +44,18 @@ public final class FrameDriver {
         if (client == null || client.level == null || client.isPaused()) {
             return;
         }
-        double partialTick = (now - lastTickNanos) / NANOS_PER_TICK;
-        if (partialTick < 0 || partialTick > MAX_PARTIAL) {
-            partialTick = 0;
+        // 插值系数必须取原版 DeltaTracker 的「游戏时间」残差：它会按当前 tick rate 换算，
+        // 用固定的 50ms/tick 自行推算时，/tick rate 一改就会把 tick 边界算错，
+        // 导致位置推进与 tick 驱动的动画不同步（高 tick rate 卡顿、低 tick rate 瞬移）。
+        float partialTick;
+        /*? if >=1.21.4 {*/
+        partialTick = client.getDeltaTracker().getGameTimeDeltaPartialTick(true);
+        /*?} else {*/
+        /*partialTick = client.getTimer().getGameTimeDeltaPartialTick(true);*/
+        /*?}*/
+        if (!(partialTick >= 0f)) {
+            partialTick = 0f;
         }
-        ClientDisplayBackend.instance().frame(client.level, (float) partialTick);
+        ClientDisplayBackend.instance().frame(client.level, partialTick);
     }
 }

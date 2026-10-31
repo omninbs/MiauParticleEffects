@@ -246,6 +246,64 @@ public final class MiauParticleEffectsServer {
         return ColorCodec.hsvToRgb(hue);
     }
 
+    // ------------------------------------------------------------------ 歌词链
+
+    /** 存活的歌词链，键 = 链 id；同一 id 重复执行 = 覆盖旧链、从头重播。 */
+    private static final Map<String, ActiveTextChain> TEXT_CHAINS = new LinkedHashMap<>();
+
+    private record ActiveTextChain(MiauParticleEffectsPackets.TextChainPayload payload, long expireTick) {
+        boolean isActive(long now) {
+            return now < expireTick;
+        }
+    }
+
+    /** 登记/重置一条歌词链并广播整条时间轴。 */
+    public static void textChain(MinecraftServer server, MiauParticleEffectsPackets.TextChainPayload payload) {
+        long now = server.getTickCount();
+        long total = 0;
+        for (MiauParticleEffectsPackets.TextChainPayload.Entry entry : payload.entries()) {
+            long end = (long) entry.startTick() + entry.params().totalTicks();
+            if (end > total) {
+                total = end;
+            }
+        }
+        long expire = payload.linger() < 0 ? Long.MAX_VALUE : now + total + payload.linger();
+        TEXT_CHAINS.put(payload.id(), new ActiveTextChain(payload, expire));
+        MiauParticleEffectsPackets.broadcast(server, payload);
+    }
+
+    public static int textChainClearAll(MinecraftServer server) {
+        int removed = TEXT_CHAINS.size();
+        TEXT_CHAINS.clear();
+        if (server != null) {
+            MiauParticleEffectsPackets.broadcast(server,
+                    new MiauParticleEffectsPackets.TextChainClearPayload(null));
+        }
+        return removed;
+    }
+
+    public static boolean textChainClear(MinecraftServer server, String id) {
+        boolean removed = TEXT_CHAINS.remove(id) != null;
+        if (removed && server != null) {
+            MiauParticleEffectsPackets.broadcast(server,
+                    new MiauParticleEffectsPackets.TextChainClearPayload(id));
+        }
+        return removed;
+    }
+
+    /** 当前存活的歌词链（先剔除已自然结束的）。 */
+    public static List<MiauParticleEffectsPackets.TextChainPayload> textChains(MinecraftServer server) {
+        if (server != null) {
+            long now = server.getTickCount();
+            TEXT_CHAINS.values().removeIf(chain -> !chain.isActive(now));
+        }
+        List<MiauParticleEffectsPackets.TextChainPayload> out = new ArrayList<>(TEXT_CHAINS.size());
+        for (ActiveTextChain chain : TEXT_CHAINS.values()) {
+            out.add(chain.payload());
+        }
+        return out;
+    }
+
     // ------------------------------------------------------------------ 音符盒触发特效
 
     /**
@@ -257,6 +315,10 @@ public final class MiauParticleEffectsServer {
             return;
         }
         pruneChains(server);
+        if (!TEXT_CHAINS.isEmpty()) {
+            long now = server.getTickCount();
+            TEXT_CHAINS.values().removeIf(chain -> !chain.isActive(now));
+        }
         if (!noteTriggerEffect || NOTE_TRIGGERS.isEmpty() || CHAINS.isEmpty()) {
             return;
         }
@@ -329,6 +391,13 @@ public final class MiauParticleEffectsServer {
 
     public static boolean hasNoteTriggerSpec() {
         return !NOTE_TRIGGERS.isEmpty();
+    }
+
+    /** 服务器停止时清空所有与「服务器 tick 计数」相关的静态状态，避免跨存档沿用旧时刻。 */
+    public static void reset() {
+        ACTIVE.clear();
+        CHAINS.clear();
+        TEXT_CHAINS.clear();
     }
 
     /** 计算链的到期 tick：最后一个音符结束后再停留 linger tick。 */

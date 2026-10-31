@@ -1,10 +1,13 @@
 package org.miau.particleeffects.client.particle;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.ParticleProvider;
 import net.minecraft.client.particle.SimpleAnimatedParticle;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.core.particles.SimpleParticleType;
+import org.miau.particleeffects.config.ConfigManager;
+import org.miau.particleeffects.mixin.client.ParticleEngineInvoker;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.particle.MiauParticleEffectsParticles;
 import org.miau.particleeffects.client.ClientClock;
@@ -25,6 +28,10 @@ public class ColoredEndRodParticle extends SimpleAnimatedParticle {
     private static float pendingScale = 1f;
     private static int pendingMode = MODE_SOLID;
     private static float pendingHueOffset = 0f;
+
+    /** 精灵集缓存：由粒子工厂在客户端初始化时填充，供快速生成路径直接构造粒子。 */
+    private static volatile SpriteSet rodSprites;
+    private static volatile SpriteSet headSprites;
 
     private final int colorMode;
     private final float hueOffset;
@@ -146,6 +153,9 @@ public class ColoredEndRodParticle extends SimpleAnimatedParticle {
     private static void addParticle(ClientLevel world, SimpleParticleType type,
                                     double x, double y, double z,
                                     double vx, double vy, double vz, boolean force) {
+        if (spawnFast(world, type, x, y, z, vx, vy, vz, force)) {
+            return;
+        }
         if (force) {
             world.addAlwaysVisibleParticle(type, x, y, z, vx, vy, vz);
         } else {
@@ -153,7 +163,55 @@ public class ColoredEndRodParticle extends SimpleAnimatedParticle {
         }
     }
 
-    public static ParticleProvider<SimpleParticleType> createFactory(SpriteSet spriteProvider) {
+    /**
+     * 快速生成路径：直接构造粒子并塞进粒子引擎。
+     *
+     * <p>原版 {@code ClientLevel#addParticle} 会先按「粒子效果」视频设置（all / decreased / minimal）
+     * 随机丢弃粒子（最弱档只保留 1/10），再做 32 格距离剔除。这里保留距离剔除（省性能），
+     * 但跳过随机抽样，也跳过注册表查找 + provider 分发，让模组的粒子数量只受硬件限制。</p>
+     *
+     * <p>返回 true 表示「已处理」（已生成或按距离丢弃），调用方不要再走原版路径。</p>
+     */
+    private static boolean spawnFast(ClientLevel world, SimpleParticleType type,
+                                     double x, double y, double z,
+                                     double vx, double vy, double vz, boolean force) {
+        if (ConfigManager.get().respectParticleSetting) {
+            return false;
+        }
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.particleEngine == null) {
+            return false;
+        }
+        if (!force && client.player != null) {
+            // 与原版一致的 32 格距离剔除（1024 = 32²），远处粒子没必要生成。
+            double dx = client.player.getX() - x;
+            double dy = client.player.getY() - y;
+            double dz = client.player.getZ() - z;
+            if (dx * dx + dy * dy + dz * dz > 1024.0) {
+                return true;
+            }
+        }
+        SpriteSet sprites = type == MiauParticleEffectsParticles.COLORED_HEAD ? headSprites : rodSprites;
+        if (sprites == null) {
+            return false;
+        }
+        ColoredEndRodParticle particle =
+                new ColoredEndRodParticle(world, x, y, z, vx, vy, vz, sprites);
+        ((ParticleEngineInvoker) (Object) client.particleEngine).expe$addParticle(particle);
+        return true;
+    }
+
+    public static ParticleProvider<SimpleParticleType> createRodFactory(SpriteSet spriteSet) {
+        rodSprites = spriteSet;
+        return factory(spriteSet);
+    }
+
+    public static ParticleProvider<SimpleParticleType> createHeadFactory(SpriteSet spriteSet) {
+        headSprites = spriteSet;
+        return factory(spriteSet);
+    }
+
+    private static ParticleProvider<SimpleParticleType> factory(SpriteSet spriteProvider) {
         /*? if >=1.21.11 {*/
         return (parameters, world, x, y, z, velocityX, velocityY, velocityZ, random) ->
                 new ColoredEndRodParticle(world, x, y, z, velocityX, velocityY, velocityZ, spriteProvider);

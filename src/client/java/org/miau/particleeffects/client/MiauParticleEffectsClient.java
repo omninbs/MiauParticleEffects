@@ -52,10 +52,10 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
 
         ParticleProviderRegistry.getInstance().register(
                 MiauParticleEffectsParticles.COLORED_END_ROD,
-                ColoredEndRodParticle::createFactory);
+                ColoredEndRodParticle::createRodFactory);
         ParticleProviderRegistry.getInstance().register(
                 MiauParticleEffectsParticles.COLORED_HEAD,
-                ColoredEndRodParticle::createFactory);
+                ColoredEndRodParticle::createHeadFactory);
 
         ClientTickEvents.END_CLIENT_TICK.register(client ->
                 ClientDisplayBackend.instance().tick());
@@ -84,6 +84,16 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
                 MiauParticleEffectsPackets.NoteChainClearPayload.ID,
                 (payload, context) -> context.client().execute(
                         () -> ClientDisplayManager.noteChainClear(payload.id())));
+
+        ClientPlayNetworking.registerGlobalReceiver(
+                MiauParticleEffectsPackets.TextChainPayload.ID,
+                (payload, context) -> context.client().execute(
+                        () -> ClientDisplayManager.textChain(payload)));
+
+        ClientPlayNetworking.registerGlobalReceiver(
+                MiauParticleEffectsPackets.TextChainClearPayload.ID,
+                (payload, context) -> context.client().execute(
+                        () -> ClientDisplayManager.textChainClear(payload.id())));
 
         ClientPlayNetworking.registerGlobalReceiver(
                 ExParticlePayload.ID,

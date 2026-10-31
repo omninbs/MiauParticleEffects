@@ -12,6 +12,18 @@ public final class MiauParticleEffectsConfig {
     public double density = 0.1;
     public boolean autoclear = false;
     public float defaultScale = 1.0F;
+    /**
+     * 单段文字的粒子像素上限（0 = 不限制，完全按 density 采样）。
+     * 触顶时自动放大采样间距，保证整段文字均匀采样而不是被截断。
+     */
+    public int maxTextPixels = 24000;
+    /** 单个线框特效的采样点上限（0 = 不限制）。 */
+    public int maxEffectPoints = 8000;
+    /**
+     * 是否服从原版「粒子效果」视频设置（all / decreased / minimal）的抽样。
+     * false（默认）= 模组自己的粒子始终全额生成，不会被该设置丢弃。
+     */
+    public boolean respectParticleSetting = false;
 
     /** 「音符盒触发特效」开关（/mpe noteblock triggereffect on|off）。 */
     public boolean noteTriggerEffect = false;

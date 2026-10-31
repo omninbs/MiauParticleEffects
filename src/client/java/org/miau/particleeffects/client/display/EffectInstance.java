@@ -9,9 +9,11 @@ import org.miau.particleeffects.animation.AnimationToken;
 import org.miau.particleeffects.animation.AnimCategory;
 import org.miau.particleeffects.client.ClientClock;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
+import org.miau.particleeffects.config.ConfigManager;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.ColorMode;
 import org.miau.particleeffects.model.EffectDisplayParams;
+import org.miau.particleeffects.model.EffectType;
 import org.miau.particleeffects.model.RotationSpec;
 
 import java.util.ArrayList;
@@ -24,8 +26,6 @@ import java.util.Random;
  * + scale 动画 + 淡入淡出 + move 位移，以及纯色/渐变色/彩虹颜色/彩虹渐变四种颜色模式。
  */
 public final class EffectInstance extends DisplayInstance {
-
-    private static final int MAX_EDGE_POINTS = 2000;
 
     private final EffectDisplayParams params;
     private final List<Vec3> basePoints;
@@ -47,9 +47,10 @@ public final class EffectInstance extends DisplayInstance {
                 params.curve(), params.entry(), params.exit(),
                 params.fade(), params.move(), params.id());
         this.params = params;
+        int maxPoints = ConfigManager.get().maxEffectPoints;
         switch (params.type()) {
-            case CUBE -> this.basePoints = buildCube(params.size());
-            case TETRA -> this.basePoints = buildTetra(params.size());
+            case CUBE -> this.basePoints = buildCube(params.size(), maxPoints);
+            case TETRA -> this.basePoints = buildTetra(params.size(), maxPoints);
             default -> this.basePoints = List.of();
         }
         float lo = Float.POSITIVE_INFINITY;
@@ -65,7 +66,7 @@ public final class EffectInstance extends DisplayInstance {
         this.minLocalX = lo;
         this.maxLocalX = hi;
 
-        int explosionCount = 260;
+        int explosionCount = explosionCountFor(params.size());
         this.explosionDirs = new ArrayList<>(explosionCount);
         this.explosionSpeeds = new float[explosionCount];
         Random random = new Random();
@@ -77,7 +78,7 @@ public final class EffectInstance extends DisplayInstance {
         this.hueOffset = (float) Math.random();
     }
 
-    private static List<Vec3> buildCube(float size) {
+    private static List<Vec3> buildCube(float size, int maxPoints) {
         float h = size / 2f;
         Vec3[] corners = {
                 new Vec3(-h, -h, -h), new Vec3(h, -h, -h),
@@ -91,13 +92,14 @@ public final class EffectInstance extends DisplayInstance {
                 {0, 4}, {1, 5}, {2, 6}, {3, 7}
         };
         List<Vec3> points = new ArrayList<>();
+        double spacing = edgeSpacing(size);
         for (int[] edge : edges) {
-            sampleEdge(corners[edge[0]], corners[edge[1]], 0.15, points);
+            sampleEdge(corners[edge[0]], corners[edge[1]], spacing, maxPoints, points);
         }
         return points;
     }
 
-    private static List<Vec3> buildTetra(float size) {
+    private static List<Vec3> buildTetra(float size, int maxPoints) {
         float edgeLength = (float) (2.0 * Math.sqrt(2.0));
         float s = size / edgeLength;
         Vec3[] vertices = {
@@ -110,24 +112,34 @@ public final class EffectInstance extends DisplayInstance {
                 {0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 3}, {2, 3}
         };
         List<Vec3> points = new ArrayList<>();
+        double spacing = edgeSpacing(size);
         for (int[] edge : edges) {
-            sampleEdge(vertices[edge[0]], vertices[edge[1]], 0.15, points);
+            sampleEdge(vertices[edge[0]], vertices[edge[1]], spacing, maxPoints, points);
         }
         return points;
     }
 
-    private static void sampleEdge(Vec3 a, Vec3 b, double spacing, List<Vec3> out) {
+    /** 采样间距随尺寸放大：尺寸很大时固定 0.15 只会让粒子重叠成一团，白烧性能。 */
+    private static double edgeSpacing(float size) {
+        return Math.max(0.15, size / 24.0);
+    }
+
+    /** 爆炸粒子数随尺寸增长（没有固定上限，只受配置的采样点上限约束）。 */
+    private static int explosionCountFor(float size) {
+        int maxPoints = ConfigManager.get().maxEffectPoints;
+        int count = (int) Math.max(240, Math.min(8192, size * 60));
+        return maxPoints > 0 ? Math.min(count, maxPoints) : count;
+    }
+
+    private static void sampleEdge(Vec3 a, Vec3 b, double spacing, int maxPoints, List<Vec3> out) {
         Vec3 delta = b.subtract(a);
         double len = delta.length();
         int count = (int) Math.ceil(len / spacing);
         if (count < 1) {
             count = 1;
         }
-        if (count > 40) {
-            count = 40;
-        }
-        if (out.size() + count > MAX_EDGE_POINTS) {
-            count = Math.max(1, MAX_EDGE_POINTS - out.size());
+        if (maxPoints > 0 && out.size() + count > maxPoints) {
+            count = Math.max(1, maxPoints - out.size());
         }
         for (int i = 0; i < count; i++) {
             double t = (i + 0.5) / count;
@@ -147,7 +159,14 @@ public final class EffectInstance extends DisplayInstance {
 
     @Override
     public boolean frameDriven() {
-        return true;
+        // 入场/出场、水波、以及带旋转/位移的显示期需要逐帧求位置；
+        // 完全静止的线框每 tick 撒一次即可，省下 2/3 的粒子生成开销。
+        if (phase == Phase.ENTER || phase == Phase.EXIT) {
+            return true;
+        }
+        return params.type() == EffectType.WAVE
+                || params.rotation() != null
+                || move != null;
     }
 
     @Override
@@ -235,20 +254,30 @@ public final class EffectInstance extends DisplayInstance {
         }
         float spinTime = cumulativeSpanTicks() + framePartial;
         Quaternionf rotation = computeOrientation().mul(computeSpinAt(spinTime), new Quaternionf());
-        // 上一 tick 的旋转角：同一局部点两次世界位置的差，就是它在本 tick 内的真实位移。
-        Quaternionf prevRotation = computeOrientation().mul(computeSpinAt(spinTime - 1f), new Quaternionf());
         boolean hasPrev = prevTickOrigin != null;
-        for (Vec3 p : basePoints) {
-            Vector3f v = new Vector3f((float) p.x, (float) p.y, (float) p.z).rotate(rotation);
+        // 上一 tick 的旋转角：同一局部点两次世界位置的差，就是它在本 tick 内的真实位移。
+        Quaternionf prevRotation = hasPrev && params.rotation() != null
+                ? computeOrientation().mul(computeSpinAt(spinTime - 1f), new Quaternionf())
+                : null;
+        Vector3f tmp = new Vector3f();
+        Vector3f prev = new Vector3f();
+        int pointCount = basePoints.size();
+        for (int i = 0; i < pointCount; i++) {
+            Vec3 p = basePoints.get(i);
+            tmp.set((float) p.x, (float) p.y, (float) p.z).rotate(rotation);
             Vec3 worldPos = origin.add(
-                    v.x * scaleFactor,
-                    v.y * scaleFactor,
-                    v.z * scaleFactor);
+                    tmp.x * scaleFactor,
+                    tmp.y * scaleFactor,
+                    tmp.z * scaleFactor);
             double vx = 0;
             double vy = 0;
             double vz = 0;
             if (hasPrev) {
-                Vector3f prev = new Vector3f((float) p.x, (float) p.y, (float) p.z).rotate(prevRotation);
+                if (prevRotation != null) {
+                    prev.set((float) p.x, (float) p.y, (float) p.z).rotate(prevRotation);
+                } else {
+                    prev.set((float) p.x, (float) p.y, (float) p.z);
+                }
                 Vec3 prevPos = prevTickOrigin.add(
                         prev.x * prevTickScale,
                         prev.y * prevTickScale,
@@ -351,11 +380,12 @@ public final class EffectInstance extends DisplayInstance {
             // 振幅映射到粒子大小（0.3~1.4）
             float scale = 0.3f + effective * 1.1f;
 
-            // 生成圆环：周长越长粒子越密，但封顶 300
+            // 生成圆环：周长越长粒子越密（上限取自配置，0 表示不限制）
             float circumference = (float) (2 * Math.PI * r);
             int count = Math.max(16, (int) (circumference / 0.35));
-            if (count > 300) {
-                count = 300;
+            int maxPoints = ConfigManager.get().maxEffectPoints;
+            if (maxPoints > 0 && count > maxPoints) {
+                count = maxPoints;
             }
 
             for (int i = 0; i < count; i++) {
@@ -365,7 +395,7 @@ public final class EffectInstance extends DisplayInstance {
                 double px = origin.x + cos * r;
                 double py = origin.y;
                 double pz = origin.z + sin * r;
-                ColoredEndRodParticle.spawnStatic(world, px, py, pz, WAVE_COLOR, scale, 2, false);
+                ColoredEndRodParticle.spawnStatic(world, px, py, pz, WAVE_COLOR, scale, 2, params.force());
             }
         }
     }

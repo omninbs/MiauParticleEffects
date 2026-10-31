@@ -7,6 +7,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 键=值 形式的命令选项集合。
+ *
+ * <p>解析时按空白切分，但引号内的空白保留（例：{@code in="slide:up, scale:enlarge"}）。
+ * 支持 {@link #overlay(Options)} 与 {@link #with(String, String)} 生成副本，
+ * 便于「全局默认值 + 每段覆盖」的合并。</p>
+ */
 public final class Options {
 
     public static final Options EMPTY = new Options(new LinkedHashMap<>());
@@ -41,7 +48,8 @@ public final class Options {
     }
 
     /**
-     * 按空白切分选项，但引号内的空白保留（例。in="slide:up, scale:enlarge"）。     */
+     * 按空白切分选项，但引号内的空白保留（例：{@code in="slide:up, scale:enlarge"}）。
+     */
     private static List<String> tokenize(String raw) {
         List<String> tokens = new ArrayList<>();
         StringBuilder current = new StringBuilder();
@@ -84,8 +92,45 @@ public final class Options {
         return entries.containsKey(key);
     }
 
+    public boolean isEmpty() {
+        return entries.isEmpty();
+    }
+
+    /** 返回 this 的副本，其中 key 被设为 value（覆盖已有值）。 */
+    public Options with(String key, String value) {
+        Map<String, String> copy = new LinkedHashMap<>(entries);
+        copy.put(key.toLowerCase(Locale.ROOT), value);
+        return new Options(copy);
+    }
+
+    /** 以 other 覆盖 this：两者都有的键取 other 的值。 */
+    public Options overlay(Options other) {
+        if (other == null || other.isEmpty()) {
+            return this;
+        }
+        if (entries.isEmpty()) {
+            return other;
+        }
+        Map<String, String> copy = new LinkedHashMap<>(entries);
+        copy.putAll(other.entries);
+        return new Options(copy);
+    }
+
+    /** 返回移除指定键后的副本。 */
+    public Options without(String... keys) {
+        if (entries.isEmpty()) {
+            return this;
+        }
+        Map<String, String> copy = new LinkedHashMap<>(entries);
+        for (String key : keys) {
+            copy.remove(key);
+        }
+        return copy.isEmpty() ? EMPTY : new Options(copy);
+    }
+
     /**
-     * 校验选项键：出现未知键时抛错并列出可用键，避免拼写错误被静默忽略。     */
+     * 校验选项键：出现未知键时抛错并列出可用键，避免拼写错误被静默忽略。
+     */
     public void checkKeys(String... allowed) {
         if (entries.isEmpty()) {
             return;
@@ -120,7 +165,7 @@ public final class Options {
             throw new IllegalArgumentException("选项 '" + key + "' 需要数值，收到 '" + v + "'");
         }
         if (Double.isNaN(parsed) || parsed < min || parsed > max) {
-            throw new IllegalArgumentException("选项 '" + key + "' 取值应在" + min + " ~ " + max);
+            throw new IllegalArgumentException("选项 '" + key + "' 取值应在 " + min + " ~ " + max);
         }
         return parsed;
     }
@@ -137,7 +182,7 @@ public final class Options {
             throw new IllegalArgumentException("选项 '" + key + "' 需要整数，收到 '" + v + "'");
         }
         if (parsed < min || parsed > max) {
-            throw new IllegalArgumentException("选项 '" + key + "' 取值应在" + min + " ~ " + max);
+            throw new IllegalArgumentException("选项 '" + key + "' 取值应在 " + min + " ~ " + max);
         }
         return parsed;
     }
@@ -151,7 +196,8 @@ public final class Options {
         return switch (s) {
             case "true", "1", "yes", "on" -> true;
             case "false", "0", "no", "off" -> false;
-            default -> throw new IllegalArgumentException("选项 '" + key + "' 需要布尔。true/false，收。'" + v + "'");
+            default -> throw new IllegalArgumentException(
+                    "选项 '" + key + "' 需要布尔值（true/false），收到 '" + v + "'");
         };
     }
 
@@ -162,7 +208,7 @@ public final class Options {
         }
         E parsed = parser.apply(v.trim());
         if (parsed == null) {
-            throw new IllegalArgumentException("选项 '" + key + "' 取值无效'" + v + "'");
+            throw new IllegalArgumentException("选项 '" + key + "' 取值无效：'" + v + "'");
         }
         return parsed;
     }

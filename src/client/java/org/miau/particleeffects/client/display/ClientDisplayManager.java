@@ -4,6 +4,7 @@ import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.TextDisplayParams;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainPayload;
+import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.TextChainPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,12 @@ public final class ClientDisplayManager {
 
         /** 移除链：id 为 null 表示移除全部。 */
         void noteChainClear(String id);
+
+        /** 收到整条歌词链时间轴：按表在各自时刻显示文字。 */
+        void textChain(TextChainPayload payload);
+
+        /** 移除歌词链：id 为 null 表示移除全部。 */
+        void textChainClear(String id);
     }
 
     public static void setBackend(Backend newBackend) {
@@ -55,6 +62,14 @@ public final class ClientDisplayManager {
 
     public static void noteChainClear(String id) {
         backend.noteChainClear(id);
+    }
+
+    public static void textChain(TextChainPayload payload) {
+        backend.textChain(payload);
+    }
+
+    public static void textChainClear(String id) {
+        backend.textChainClear(id);
     }
 
     private static final class NoopBackend implements Backend {
@@ -84,6 +99,17 @@ public final class ClientDisplayManager {
         @Override
         public void noteChainClear(String id) {
             LOGGER.debug("[MiauParticleEffects] noteChainClear id={}", id);
+        }
+
+        @Override
+        public void textChain(TextChainPayload payload) {
+            LOGGER.debug("[MiauParticleEffects] textChain id={} entries={}",
+                    payload.id(), payload.entries().size());
+        }
+
+        @Override
+        public void textChainClear(String id) {
+            LOGGER.debug("[MiauParticleEffects] textChainClear id={}", id);
         }
     }
 }

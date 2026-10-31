@@ -182,13 +182,19 @@ public final class NoteChainPlayer {
         return lowest + (height - lowest) * Math.min(1.0, factor);
     }
 
+    /** 二分定位当前所在的段：整首歌音符很多时避免每帧线性扫描。 */
     private int segmentAt(double t) {
-        for (int i = 0; i < delays.length; i++) {
-            if (t < startTimes[i + 1]) {
-                return i;
+        int lo = 0;
+        int hi = delays.length - 1;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (t < startTimes[mid + 1]) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
             }
         }
-        return delays.length - 1;
+        return lo;
     }
 
     /** 按段内参数 u∈[0,1] 求曲线上一点：水平直线插值，竖直按 curve 起伏。 */

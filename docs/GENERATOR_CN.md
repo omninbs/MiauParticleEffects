@@ -6,6 +6,9 @@
 
 > 与旧方案的区别：不再需要 `/mpe noteblock select` 手动框选轨道，也不再需要模组去
 > 检测音符盒发声或反推红石走线。时序数据由生成器直接给出，**第一遍播放就完全准确**。
+>
+> 歌词/字幕的对接见另一份文档：[`GENERATOR_TEXT_CN.md`](GENERATOR_TEXT_CN.md)
+> （`/mpe text chain`：「什么时候、在哪里、显示什么文字」）。
 
 ---
 

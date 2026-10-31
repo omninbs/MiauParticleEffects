@@ -27,6 +27,8 @@ public final class MiauParticleEffectsPackets {
         PayloadTypeRegistry.clientboundPlay().register(ClearPayload.ID, ClearPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NoteChainPayload.ID, NoteChainPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(NoteChainClearPayload.ID, NoteChainClearPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(TextChainPayload.ID, TextChainPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(TextChainClearPayload.ID, TextChainClearPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ExParticlePayload.ID, ExParticlePayload.CODEC);
     }
 
@@ -229,6 +231,89 @@ public final class MiauParticleEffectsPackets {
 
             @Override
             public void encode(FriendlyByteBuf buf, NoteChainClearPayload value) {
+                buf.writeBoolean(value.id() != null);
+                if (value.id() != null) {
+                    buf.writeUtf(value.id());
+                }
+            }
+        };
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return ID;
+        }
+    }
+
+    /**
+     * 一条歌词链：一次性把整首歌「什么时候、在哪里、显示什么」交给客户端。
+     *
+     * <p>每段自带完整的 {@link TextDisplayParams}（位置已是世界绝对坐标），
+     * {@code startTick} 是相对「命令方块执行那一刻」的绝对 tick，客户端到点才创建显示实例，
+     * 因此不会一次性栅格化整首歌的文字。</p>
+     */
+    public record TextChainPayload(String id, List<Entry> entries, int linger, long startTick)
+            implements CustomPacketPayload {
+
+        /** 单段歌词：相对链起点的绝对 tick + 完整的文字显示参数。 */
+        public record Entry(int startTick, TextDisplayParams params) {
+        }
+
+        private static final int MAX_ENTRIES = 4096;
+
+        public static final CustomPacketPayload.Type<TextChainPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "text_chain"));
+
+        public static final StreamCodec<FriendlyByteBuf, TextChainPayload> CODEC = new StreamCodec<>() {
+            @Override
+            public TextChainPayload decode(FriendlyByteBuf buf) {
+                String id = buf.readUtf(128);
+                int count = buf.readVarInt();
+                if (count < 0 || count > MAX_ENTRIES) {
+                    count = 0;
+                }
+                List<Entry> entries = new ArrayList<>(count);
+                for (int i = 0; i < count; i++) {
+                    int startTick = Math.max(0, buf.readVarInt());
+                    entries.add(new Entry(startTick, PayloadCodecs.TEXT.decode(buf)));
+                }
+                int linger = buf.readVarInt();
+                long startTick = buf.readLong();
+                return new TextChainPayload(id, entries, linger, startTick);
+            }
+
+            @Override
+            public void encode(FriendlyByteBuf buf, TextChainPayload value) {
+                buf.writeUtf(value.id());
+                buf.writeVarInt(value.entries().size());
+                for (Entry entry : value.entries()) {
+                    buf.writeVarInt(Math.max(0, entry.startTick()));
+                    PayloadCodecs.TEXT.encode(buf, entry.params());
+                }
+                buf.writeVarInt(value.linger());
+                buf.writeLong(value.startTick());
+            }
+        };
+
+        @Override
+        public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+            return ID;
+        }
+    }
+
+    /** 移除歌词链：id 为 null 表示移除全部。 */
+    public record TextChainClearPayload(String id) implements CustomPacketPayload {
+
+        public static final CustomPacketPayload.Type<TextChainClearPayload> ID =
+                new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath("miauparticleeffects", "text_chain_clear"));
+
+        public static final StreamCodec<FriendlyByteBuf, TextChainClearPayload> CODEC = new StreamCodec<>() {
+            @Override
+            public TextChainClearPayload decode(FriendlyByteBuf buf) {
+                return new TextChainClearPayload(buf.readBoolean() ? buf.readUtf(128) : null);
+            }
+
+            @Override
+            public void encode(FriendlyByteBuf buf, TextChainClearPayload value) {
                 buf.writeBoolean(value.id() != null);
                 if (value.id() != null) {
                     buf.writeUtf(value.id());
