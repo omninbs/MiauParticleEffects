@@ -43,6 +43,13 @@ public final class MiauParticleEffectsClient implements ClientModInitializer {
         ClientTickEvents.START_CLIENT_TICK.register(client -> ParticleExUtil.onStartClientTick());
         ClientTickEvents.END_CLIENT_TICK.register(client -> ParticleExUtil.onEndClientTick());
 
+        // 单调时钟：不能依赖世界时间，否则时间固定或 /time set 时动画会卡住/跳变
+        ClientTickEvents.START_CLIENT_TICK.register(client -> {
+            if (!client.isPaused()) {
+                ClientClock.advance();
+            }
+        });
+
         ParticleProviderRegistry.getInstance().register(
                 MiauParticleEffectsParticles.COLORED_END_ROD,
                 ColoredEndRodParticle::createFactory);

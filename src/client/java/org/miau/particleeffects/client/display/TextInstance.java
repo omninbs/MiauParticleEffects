@@ -10,7 +10,7 @@ import org.miau.particleeffects.client.raster.FontRasterizer;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.ColorMode;
 import org.miau.particleeffects.model.TextDisplayParams;
-import org.miau.particleeffects.util.WorldTime;
+import org.miau.particleeffects.client.ClientClock;
 
 import java.util.List;
 
@@ -95,7 +95,7 @@ public final class TextInstance extends DisplayInstance {
         Vec3 baseOffset = pos.add(moveOffset).add(slideOffset);
         int stride = Math.max(1, Math.round(clarityFactor));
         ColorMode colorMode = params.colorMode();
-        long worldTime = WorldTime.ticks(world);
+        long worldTime = ClientClock.ticks();
 
         // 位移速度：只在 tick 边界采样位移。粒子速度以 tick 为单位，若用帧间位移，
         // 旧粒子在寿命内移动得太少、追不上新位置，移动时就会留下拖影。

@@ -5,8 +5,8 @@ import net.minecraft.world.phys.Vec3;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.HorizontalCurve;
+import org.miau.particleeffects.client.ClientClock;
 import org.miau.particleeffects.protocol.MiauParticleEffectsPackets.NoteChainPayload;
-import org.miau.particleeffects.util.WorldTime;
 
 import java.util.List;
 
@@ -27,10 +27,10 @@ public final class NoteChainPlayer {
     /** 单帧拖尾撒点上限，防止极端位移时粒子数失控。 */
     private static final int MAX_TRAIL_PER_FRAME = 64;
     /**
-     * 相邻两次 tick 之间允许计入时间轴的最大世界时间增量。
+     * 相邻两次 tick 之间允许计入时间轴的最大增量。
      *
-     * <p>世界时间会被 {@code /time set} 整体跳变；直接用它做绝对差会让进度瞬间超过总时长，
-     * 整条链被判定为播放完毕而消失。超过该阈值的增量按 1 tick 处理。</p>
+     * <p>时间轴由客户端单调时钟驱动；超过该阈值的增量（例如卡顿后一次跳很多）按 1 tick 处理，
+     * 避免进度瞬间越过总时长。</p>
      */
     private static final long MAX_TICK_DELTA = 20L;
 
@@ -64,7 +64,7 @@ public final class NoteChainPlayer {
     private final boolean rainbow;
     private final long restPhase;
 
-    private long lastWorldTime;
+    private long lastClockTime;
     private boolean clockInitialised;
     private long elapsedTicks;
     private Vec3 pos;
@@ -123,15 +123,16 @@ public final class NoteChainPlayer {
 
     /** 只推进时间轴与到期判定；位置与粒子交给 {@link #frame}。 */
     public void tick(ClientLevel world) {
-        long now = WorldTime.ticks(world);
+        // 用客户端单调时钟，而不是世界时间：时间固定（关闭日夜循环）时世界时间不推进，
+        // 弹力球会卡住；/time set 又会让它跳变。
+        long now = ClientClock.ticks();
         if (!clockInitialised) {
-            lastWorldTime = now;
+            lastClockTime = now;
             clockInitialised = true;
             return;
         }
-        long delta = now - lastWorldTime;
-        lastWorldTime = now;
-        // 时钟跳变（/time set、跨维度等）不计入时间轴，避免链被判定为已播完
+        long delta = now - lastClockTime;
+        lastClockTime = now;
         if (delta < 0 || delta > MAX_TICK_DELTA) {
             delta = 1;
         }

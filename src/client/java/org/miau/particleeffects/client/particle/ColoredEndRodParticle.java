@@ -7,7 +7,7 @@ import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.core.particles.SimpleParticleType;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.particle.MiauParticleEffectsParticles;
-import org.miau.particleeffects.util.WorldTime;
+import org.miau.particleeffects.client.ClientClock;
 
 /**
  * 彩色末地烛粒子：与末地烛(end_rod)粒子一致的外观（glitter 精灵、发光、后半生淡出），
@@ -49,7 +49,7 @@ public class ColoredEndRodParticle extends SimpleAnimatedParticle {
     public void tick() {
         super.tick();
         if (colorMode == MODE_RAINBOW) {
-            float hue = ColorCodec.rainbowPhase(WorldTime.ticks(level)) + hueOffset;
+            float hue = ColorCodec.rainbowPhase(ClientClock.ticks()) + hueOffset;
             setColor(ColorCodec.hsvToRgb(hue));
         }
     }

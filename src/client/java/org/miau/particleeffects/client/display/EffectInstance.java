@@ -7,12 +7,12 @@ import org.joml.Vector3f;
 import org.miau.particleeffects.animation.AnimationSet;
 import org.miau.particleeffects.animation.AnimationToken;
 import org.miau.particleeffects.animation.AnimCategory;
+import org.miau.particleeffects.client.ClientClock;
 import org.miau.particleeffects.client.particle.ColoredEndRodParticle;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.ColorMode;
 import org.miau.particleeffects.model.EffectDisplayParams;
 import org.miau.particleeffects.model.RotationSpec;
-import org.miau.particleeffects.util.WorldTime;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -191,11 +191,11 @@ public final class EffectInstance extends DisplayInstance {
 
     // ------------------------------------------------------------------ color modes
 
-    private int resolveColor(ClientLevel world, float gradientT) {
+    private int resolveColor(float gradientT) {
         return switch (params.colorMode()) {
             case GRADIENT -> ColorCodec.sampleGradient(params.gradientColors(), gradientT);
             case RAINBOW_GRADIENT -> ColorCodec.hsvToRgb(
-                    gradientT + ColorCodec.rainbowPhase(WorldTime.ticks(world)));
+                    gradientT + ColorCodec.rainbowPhase(ClientClock.ticks()));
             default -> params.colorArgb() & 0xFFFFFF;
         };
     }
@@ -210,7 +210,7 @@ public final class EffectInstance extends DisplayInstance {
             ColoredEndRodParticle.spawnRainbow(world, x, y, z, vx, vy, vz, scale, maxAge, hueOffset, false,
                     params.force());
         } else {
-            int color = resolveColor(world, gradientT);
+            int color = resolveColor(gradientT);
             if (vx * vx + vy * vy + vz * vz > 1e-8) {
                 ColoredEndRodParticle.spawnMoving(world, x, y, z, vx, vy, vz, color, scale, maxAge,
                         params.force());
