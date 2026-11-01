@@ -2,7 +2,7 @@
 mod.id = "miauparticleeffects"
 mod.name = "MiauParticleEffects"
 mod.group = "org.miau.particleeffects"
-mod.version = "1.0"
+mod.version = "1.1"
 
 # Common deps
 deps.fabric_loader = "0.19.5"

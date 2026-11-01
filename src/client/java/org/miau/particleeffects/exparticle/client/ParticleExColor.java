@@ -1,7 +1,7 @@
 package org.miau.particleeffects.exparticle.client;
 
 import net.minecraft.client.particle.Particle;
-/*? if >=26.1 {*/
+/*? if >=1.21.11 {*/
 import net.minecraft.client.particle.SingleQuadParticle;
 
 import java.lang.reflect.Field;
@@ -12,12 +12,13 @@ import java.lang.reflect.Field;
 /**
  * 粒子颜色的跨版本读写。
  *
- * <p>1.21.x 的颜色字段在 {@code Particle} 上；26.1 起这些字段下沉到 {@code SingleQuadParticle}，
- * 且只有 {@code setColor} 是公开的，透明度需要反射设置。</p>
+ * <p>1.21.8 及以下：颜色字段在 {@code Particle} 上，用 mixin accessor 读写。
+ * 1.21.11 起：这些字段下沉到 {@code SingleQuadParticle}（{@code Particle} 上已不存在），
+ * 且只有 {@code setColor} 是公开的，透明度需要反射设置；26.x 走同一条路径。</p>
  */
 public final class ParticleExColor {
 
-    /*? if >=26.1 {*/
+    /*? if >=1.21.11 {*/
     private static final Field RED = find("rCol");
     private static final Field GREEN = find("gCol");
     private static final Field BLUE = find("bCol");
@@ -28,7 +29,7 @@ public final class ParticleExColor {
     }
 
     public static void set(Particle particle, double red, double green, double blue, double alpha) {
-        /*? if >=26.1 {*/
+        /*? if >=1.21.11 {*/
         if (particle instanceof SingleQuadParticle quad) {
             quad.setColor((float) red, (float) green, (float) blue);
             write(ALPHA, quad, (float) alpha);
@@ -43,7 +44,7 @@ public final class ParticleExColor {
     }
 
     public static float red(Particle particle) {
-        /*? if >=26.1 {*/
+        /*? if >=1.21.11 {*/
         return read(RED, particle);
         /*?} else {*/
         /*return ((ParticleAccessor) particle).exGetColorRed();
@@ -51,7 +52,7 @@ public final class ParticleExColor {
     }
 
     public static float green(Particle particle) {
-        /*? if >=26.1 {*/
+        /*? if >=1.21.11 {*/
         return read(GREEN, particle);
         /*?} else {*/
         /*return ((ParticleAccessor) particle).exGetColorGreen();
@@ -59,7 +60,7 @@ public final class ParticleExColor {
     }
 
     public static float blue(Particle particle) {
-        /*? if >=26.1 {*/
+        /*? if >=1.21.11 {*/
         return read(BLUE, particle);
         /*?} else {*/
         /*return ((ParticleAccessor) particle).exGetColorBlue();
@@ -67,14 +68,14 @@ public final class ParticleExColor {
     }
 
     public static float alpha(Particle particle) {
-        /*? if >=26.1 {*/
+        /*? if >=1.21.11 {*/
         return read(ALPHA, particle);
         /*?} else {*/
         /*return ((ParticleAccessor) particle).exGetColorAlpha();
         *//*?}*/
     }
 
-    /*? if >=26.1 {*/
+    /*? if >=1.21.11 {*/
     private static Field find(String name) {
         try {
             Field field = SingleQuadParticle.class.getDeclaredField(name);

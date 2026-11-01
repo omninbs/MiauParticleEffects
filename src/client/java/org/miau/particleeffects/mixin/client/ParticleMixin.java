@@ -37,18 +37,6 @@ public abstract class ParticleMixin implements IParticle {
     protected double yd;
     @Shadow
     protected double zd;
-    // 26.1 起颜色字段下沉到 SingleQuadParticle，这里只保留低版本的字段映射；
-    // 当前 active 版本直接编译 src，因此低版本代码必须保持注释。
-    /*? if <26.1 {*/
-    /*@Shadow
-    protected float rCol;
-    @Shadow
-    protected float gCol;
-    @Shadow
-    protected float bCol;
-    @Shadow
-    protected float alpha;
-    *//*?}*/
 
     @Shadow
     public abstract void move(double x, double y, double z);

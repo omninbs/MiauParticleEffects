@@ -475,17 +475,36 @@ public final class TextInstance extends DisplayInstance {
             if (rel < 0) {
                 continue;
             }
-            boolean exiting = rel >= timing.durationTicks();
-            if (exiting && rel - timing.durationTicks() >= exitTicks) {
-                continue;
-            }
             // t = 这个字此刻的「显现程度」：进场 0→1，退场 1→0，两端动画自动镜像。
+            // charHold（默认）：字出现后一直保留，整句到最后一字结束时才一起退场（累积显示）；
+            // charout=self：每个字到自己的 start + duration 就单独退场。
+            boolean exiting;
             float t;
-            if (!exiting) {
-                int inTicks = Math.min(enterTicks, timing.durationTicks());
-                t = inTicks <= 0 ? 1f : (float) Math.min(1d, rel / inTicks);
+            if (params.charHold()) {
+                double sentenceEnd = charSpanTicks;
+                if (nowTicks >= sentenceEnd) {
+                    if (exitTicks <= 0 || nowTicks - sentenceEnd >= exitTicks) {
+                        continue;
+                    }
+                    exiting = true;
+                    t = (float) Math.max(0d, 1d - (nowTicks - sentenceEnd) / exitTicks);
+                } else {
+                    exiting = false;
+                    int inTicks = Math.min(enterTicks, timing.durationTicks());
+                    t = inTicks <= 0 ? 1f : (float) Math.min(1d, rel / inTicks);
+                }
             } else {
-                t = exitTicks <= 0 ? 0f : (float) Math.max(0d, 1d - (rel - timing.durationTicks()) / exitTicks);
+                exiting = rel >= timing.durationTicks();
+                if (exiting && rel - timing.durationTicks() >= exitTicks) {
+                    continue;
+                }
+                if (!exiting) {
+                    int inTicks = Math.min(enterTicks, timing.durationTicks());
+                    t = inTicks <= 0 ? 1f : (float) Math.min(1d, rel / inTicks);
+                } else {
+                    t = exitTicks <= 0 ? 0f
+                            : (float) Math.max(0d, 1d - (rel - timing.durationTicks()) / exitTicks);
+                }
             }
             float eased = curve.apply(t);
             float alpha = 1f;

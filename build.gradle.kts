@@ -85,8 +85,13 @@ fun ProcessResources.configureResources() {
     }
 
     val mixinJava = "JAVA_$requiredJavaRelease"
+    // ParticleGroupMixin only applies to 1.21.11+ where the particle cap moved into
+    // ParticleGroup; on older versions the class doesn't exist, so the entry is injected
+    // here instead of using Stonecutter comments (the active version doesn't preprocess
+    // resources, which would leave invalid JSON behind).
+    val mixinExtra = if (sc.current.parsed >= "1.21.11") ",\"ParticleGroupMixin\"" else ""
     filesMatching("*.mixins.json") {
-        expand("java" to mixinJava)
+        expand("java" to mixinJava, "mixin_extra" to mixinExtra)
     }
 }
 

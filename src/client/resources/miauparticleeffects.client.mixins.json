@@ -7,7 +7,7 @@
     "ParticleAccessor",
     "ParticleEngineInvoker",
     "ParticleEngineMixin",
-    "ParticleMixin"
+    "ParticleMixin"${mixin_extra}
   ],
   "injectors": {
     "defaultRequire": 1

@@ -28,7 +28,8 @@ public record TextDisplayParams(
         MoveSpec move,
         String id,
         boolean force,
-        List<CharTiming> charTimings) {
+        List<CharTiming> charTimings,
+        boolean charHold) {
 
     /** 逐字时间表条目上限（与文字长度上限一致）。 */
     public static final int MAX_CHARS = 256;
@@ -91,7 +92,7 @@ public record TextDisplayParams(
         return new TextDisplayParams(
                 text, pos, scale, colorArgb, colorMode, gradientColors, orientation,
                 durationTicks, enterTicks, exitTicks, delayTicks,
-                curve, entry, exit, fade, spread, density, move, newId, force, charTimings);
+                curve, entry, exit, fade, spread, density, move, newId, force, charTimings, charHold);
     }
 
     public TextDisplayParams withDelay(int addedTicks) {
@@ -101,7 +102,7 @@ public record TextDisplayParams(
         return new TextDisplayParams(
                 text, pos, scale, colorArgb, colorMode, gradientColors, orientation,
                 durationTicks, enterTicks, exitTicks, delayTicks + addedTicks,
-                curve, entry, exit, fade, spread, density, move, id, force, charTimings);
+                curve, entry, exit, fade, spread, density, move, id, force, charTimings, charHold);
     }
 
     /** 是否逐字时间轴模式：每个字都有自己的开始时刻与显示时长。 */

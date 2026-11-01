@@ -142,12 +142,14 @@ public final class PayloadCodecs {
                 charTimings.add(new org.miau.particleeffects.model.CharTiming(
                         Math.max(0, charStart), Math.max(1, charDuration)));
             }
+            boolean charHold = buf.readBoolean();
             try {
                 return new TextDisplayParams(
                         text, new net.minecraft.world.phys.Vec3(p.x, p.y, p.z), scale, color,
                         colorMode, gradientColors,
                         orientation, duration, enter, exit, delay,
-                        curve, entry, exitSet, fade, spread, density, move, id, force, charTimings);
+                        curve, entry, exitSet, fade, spread, density, move, id, force, charTimings,
+                        charHold);
             } catch (RuntimeException e) {
                 return fallbackText(text, p);
             }
@@ -159,7 +161,7 @@ public final class PayloadCodecs {
                     ColorMode.SOLID, List.of(),
                     new Orientation(0f, 0f, 0f), 100, 0, 20, 0,
                     Easings.EASE_OUT, AnimationSet.EMPTY, AnimationSet.EMPTY,
-                    FadeOption.NONE, 3f, 0.1, null, null, false, List.of());
+                    FadeOption.NONE, 3f, 0.1, null, null, false, List.of(), true);
         }
 
         @Override
@@ -200,6 +202,7 @@ public final class PayloadCodecs {
                 buf.writeVarInt(timing.startTick());
                 buf.writeVarInt(timing.durationTicks());
             }
+            buf.writeBoolean(value.charHold());
         }
     };
 

@@ -135,7 +135,11 @@ public final class MiauParticleEffectsCommand {
               chars=<start>:<duration>,<start>:<duration>,...
                 每个字一项，顺序与文字一致；条目数必须等于可见字符数（含空格，不含 §x 颜色码）
                 start    该字开始出现的时刻，相对本段的 start（tick，>=0）
-                duration 该字从出现到开始退场的时长（tick，>=1）；多个字可以同时出现
+                duration 该字「唱」多久（tick，>=1）；多个字可以同时出现
+                累积显示：字出现后一直保留，整句在最后一字的 start+duration 结束后一起退场
+              charout=hold|self   字的退场方式（默认 hold）
+                hold     累积显示到整句结束，整句一起跑 out= 退场（字幕效果）
+                self     每个字到自己的 start+duration 就单独退场
                 字的入场/出场动画用段的 in= / out= / enter= / exit=
                 逐字模式支持的动画：scale zoom flip rotate slide drop bounce clarity + fade
                 （typewriter / wipe / spacing / scatter 与时间表语义冲突，会报错）
@@ -143,7 +147,8 @@ public final class MiauParticleEffectsCommand {
               density= 像素密度(0.01~1)   scale= 字号(方块)   color= / gradient= 颜色
               in= 入场动画   out= 出场动画   fade=in|out|both   enter= / exit= 动画时长(tick)
               curve= 曲线   towards= 朝向   move= 位移   spread= 间距倍率
-              chars= 逐字时间表   force= 强制显示   linger= 链结束后再保留的 tick（-1 常驻）   id= 链 ID
+              chars= 逐字时间表   charout= 字退场方式
+              force= 强制显示   linger= 链结束后再保留的 tick（-1 常驻）   id= 链 ID
             子命令：
               /mpe text chain clear [id=<ID>]   移除全部/指定歌词链
               /mpe text chain status           查看存活的歌词链
@@ -278,14 +283,16 @@ public final class MiauParticleEffectsCommand {
     /** 文字选项补全（含动画样式的常用写法）。 */
     private static final String[] TEXT_OPTION_KEYS = {
             "scale=", "color=", "gradient=", "towards=", "duration=", "enter=", "exit=", "delay=",
-            "curve=", "in=", "out=", "fade=", "spread=", "density=", "move=", "chars=", "id=", "force="};
+            "curve=", "in=", "out=", "fade=", "spread=", "density=", "move=", "chars=", "charout=",
+            "id=", "force="};
 
     private static final String[] TEXT_OPTION_VALUES = {
             "in=typewriter", "in=wipe", "in=slide:up", "in=scale:enlarge", "in=zoom", "in=flip",
             "in=bounce", "in=drop", "in=rotate", "in=scatter", "in=spacing:converge", "in=clarity:clear",
             "out=typewriter", "out=wipe", "out=slide:down", "out=scale:shrink", "out=zoom", "out=flip",
             "out=bounce", "out=drop", "out=rotate", "out=scatter", "fade=both", "fade=in", "fade=out",
-            "chars=0:4,4:4,8:4,12:20", "curve=ease-out", "curve=ease-in-out", "curve=bounce"};
+            "chars=0:4,4:4,8:4,12:20", "charout=hold", "charout=self", "curve=ease-out",
+            "curve=ease-in-out", "curve=bounce"};
 
     private static final SuggestionProvider<CommandSourceStack> TEXT_OPTION_SUGGESTIONS = (ctx, builder) -> {
         String input = builder.getRemaining().toLowerCase(Locale.ROOT);
@@ -505,7 +512,7 @@ public final class MiauParticleEffectsCommand {
 
     private static TextDisplayParams parseText(String text, Vec3 pos, Options o) {
         o.checkKeys("scale", "color", "gradient", "force", "towards", "duration", "enter", "exit", "delay",
-                "curve", "in", "out", "fade", "spread", "move", "id", "density", "chars");
+                "curve", "in", "out", "fade", "spread", "move", "id", "density", "chars", "charout");
         String decoded = decodeColorCodes(text);
         float scale = (float) o.optDouble("scale", ConfigManager.get().defaultScale, 0.05, 64);
         ColorSpec cs = resolveColorSpec(o);
@@ -524,6 +531,7 @@ public final class MiauParticleEffectsCommand {
         String id = o.optString("id", "");
         boolean force = o.optBool("force", false);
         List<CharTiming> charTimings = parseCharTimings(o.optString("chars", ""), decoded);
+        boolean charHold = parseCharOut(o.optString("charout", "hold"));
         if (!charTimings.isEmpty()) {
             int span = 0;
             for (CharTiming timing : charTimings) {
@@ -539,14 +547,33 @@ public final class MiauParticleEffectsCommand {
             }
             requirePerCharAnims(entry, "in");
             requirePerCharAnims(exitSet, "out");
-        } else if (duration < 1) {
-            throw new IllegalArgumentException("duration 至少为 1 tick（逐字模式请用 chars= 让模组推导）");
+        } else {
+            if (o.has("charout")) {
+                throw new IllegalArgumentException("charout= 只对逐字模式（chars=）有意义");
+            }
+            if (duration < 1) {
+                throw new IllegalArgumentException("duration 至少为 1 tick（逐字模式请用 chars= 让模组推导）");
+            }
         }
         return new TextDisplayParams(
                 decoded, pos, scale, cs.color(), cs.mode(), cs.gradientColors(), orientation,
                 duration, enter, exit, delay, curve,
                 entry, exitSet, fade, spread, density, move,
-                id.isBlank() ? null : id, force, charTimings);
+                id.isBlank() ? null : id, force, charTimings, charHold);
+    }
+
+    /**
+     * 逐字模式下字的退场方式：{@code hold}（默认）累积显示到整句结束，
+     * {@code self} 每个字到自己的 {@code start + duration} 就单独退场。
+     */
+    private static boolean parseCharOut(String raw) {
+        String value = raw == null ? "hold" : raw.trim().toLowerCase(Locale.ROOT);
+        return switch (value) {
+            case "", "hold", "sentence", "end", "cumulative" -> true;
+            case "self", "each", "char" -> false;
+            default -> throw new IllegalArgumentException(
+                    "charout= 取值应为 hold（累积到整句结束，默认）/ self（每个字各自退场），收到 '" + raw + "'");
+        };
     }
 
     /** 逐字模式下没有意义的动画类别：显现时刻已由时间表决定，字间距/爆散按字算也不成立。 */

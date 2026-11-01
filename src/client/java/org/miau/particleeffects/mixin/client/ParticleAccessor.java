@@ -42,9 +42,10 @@ public interface ParticleAccessor {
     @Accessor("age")
     int exGetAge();
 
-    // 26.1 起颜色字段下沉到 SingleQuadParticle；低版本代码必须保持注释，
+    // 1.21.11 起颜色字段下沉到 SingleQuadParticle（Particle 上已不存在，accessor 会 remap 失败），
+    // 因此从 1.21.11 开始改由 ParticleExColor 用反射读写；低版本代码必须保持注释，
     // 因为 active 版本（26.2）直接编译 src，不经过条件预处理。
-    /*? if <26.1 {*/
+    /*? if <1.21.11 {*/
     /*@Accessor("rCol")
     float exGetColorRed();
 

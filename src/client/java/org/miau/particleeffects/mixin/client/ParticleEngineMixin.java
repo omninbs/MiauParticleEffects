@@ -11,7 +11,8 @@ import org.spongepowered.asm.mixin.injection.ModifyConstant;
  * 提高原版粒子数量上限与单 tick 更新预算（移植自 ExParticle 的 ParticleManagerMixin，
  * 旧版通过 CoreMod 实现，这里用 Mixin 完成）。
  *
- * < <p>目标常量在各版本可能存在差异，故用 {@code require = 0} 允许静默跳过。</p>
+ * < <p>目标常量在各版本可能存在差异，故用 {@code require = 0} 允许静默跳过。
+ * 1.21.11 起上限常量移到了 {@code ParticleGroup}，由 {@link ParticleGroupMixin} 接管。</p>
  */
 @Mixin(ParticleEngine.class)
 public abstract class ParticleEngineMixin {

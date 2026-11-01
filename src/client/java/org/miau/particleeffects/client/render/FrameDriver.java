@@ -45,7 +45,12 @@ public final class FrameDriver {
         /*? if >=26.1 {*/
         net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents.END_EXTRACTION
                 .register(context -> onFrame());
-        /*?} else {*/
+        /*?}*/
+        /*? if >=1.21.11 && <26.1 {*/
+        /*net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents.END_EXTRACTION
+                .register(context -> onFrame());*/
+        /*?}*/
+        /*? if <1.21.11 {*/
         /*net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.END
                 .register(context -> onFrame());*/
         /*?}*/

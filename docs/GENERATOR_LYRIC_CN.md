@@ -43,13 +43,14 @@
 /mpe text chain ~~~ <句1>|<句2>|... chars=<字时间表> [选项]
         │  ③ 写进脉冲命令方块，与红石结构同时激活
         ▼
-MiauParticleEffects：整句一次栅格化，按每个字的 start/duration 逐字出现、逐字退场
+MiauParticleEffects：整句一次栅格化，按每个字的 start 逐字出现并**累积**显示，整句结束时一起退场
 ```
 
 - **一条命令 = 一整首歌的歌词**（一个命令方块、一个脉冲）。
 - 生成器不需要知道字宽、行宽：模组会按整句内容自己排布版式，生成器只给**句子中心坐标**。
-- 一句歌词 = 一个独立显示实例：**上一句不会因为下一句出现而被清掉**，它会在自己最后一个字
-  退场后自然消失（第 9 节）。所以生成器不需要发 `/mpe clear`。
+- 一句歌词 = 一个独立显示实例：字按时刻逐个出现后**一直保留**（累积，像整句的逐字入场动画），
+  整句在最后一字结束时一起退场；**上一句不会因为下一句出现而被清掉**，它自己退场后消失
+  （第 9 节）。所以生成器不需要发 `/mpe clear`。
 
 ---
 
@@ -145,9 +146,10 @@ if sentence not empty: emit(sentence)  # 收尾
 | `color=` / `gradient=` | — | `#FFFFFF` | 纯色 / 渐变 / `rainbow` |
 | `density=` | 0.01~1 | 配置值(0.1) | 粒子密度（越小越清晰、粒子越多） |
 | `enter=` | tick | `10` | 每个字的入场动画时长（逐字模式下建议 `0~2`） |
-| `exit=` | tick | `10` | 每个字的退场动画时长（建议 `2~4`） |
-| `in=` / `out=` | — | 无 | 每个字的入场 / 退场动画（第 8 节白名单） |
+| `exit=` | tick | `10` | 整句退场（或 `charout=self` 时每个字退场）的动画时长（建议 `2~4`） |
+| `in=` / `out=` | — | 无 | 每个字的入场动画 / 整句的退场动画（第 8 节白名单） |
 | `fade=` | — | `none` | `in` / `out` / `both`，逐字淡入淡出 |
+| `charout=` | — | `hold` | `hold` 累积显示到整句结束一起退场；`self` 每个字各自退场 |
 | `towards=` | 角度 | `0` | 文字朝向 |
 | `id=` | 字符串 | 锚点坐标 | 链 ID（同一 ID 再次执行 = 重置重播） |
 | `linger=` | tick | `0` | 整条链播完后再保留多久；逐字模式一般不用 |
@@ -185,12 +187,19 @@ chars=<字start>:<字duration>,<字start>:<字duration>,...
 |---|---|
 | 条目数 | **必须等于句子的可见字符数**：`§x` / `&x` 颜色码不算，**空格算一个**。 |
 | `字start` | 这个字相对**本段 `start`** 的 tick 偏移（`≥ 0`） |
-| `字duration` | 这个字从出现到**开始退场**的时长（`≥ 1`） |
+| `字duration` | 这个字「唱」多久（`≥ 1`）：累积模式下它只决定**句末时刻**（`start + duration`） |
 
 - 多个字可以写相同的 `字start`（同一 tick 一起出现）。
 - `chars=` 写在段内（`;chars=...`）或全局（空格分隔）都行。
 - 逐字模式下**段字段 `duration` 只用来校验**：写 `0` / 省略 = 自动推导；
   写了比时间表更小的值 → 模组报错（避免静默截掉最后几个字）。
+
+### 退场方式 `charout=`
+
+| 值 | 效果 |
+|---|---|
+| `hold`（默认） | **累积**：字出现后一直显示，整句在「最后一字的 `start + duration`」之后一起跑 `out=` 退场。字幕的标准观感。 |
+| `self` | 每个字到自己的 `start + duration` 就开始单独退场，屏上只留相邻几个字（旧行为）。 |
 
 ---
 
@@ -247,7 +256,7 @@ fade=in|out|both         move=dx,dy,dz,时长,曲线（整句位移，显示期�
 enter=0 exit=3 fade=both in=scale:enlarge
 ```
 
-含义：字立刻出现（`enter=0`），退场时 3 tick 内缩小淡出。
+含义：字立刻出现（`enter=0`），累积到句末后整句在 3 tick 内缩小淡出。
 
 ---
 
@@ -255,29 +264,36 @@ enter=0 exit=3 fade=both in=scale:enlarge
 
 生成器可以依赖以下语义（模组已实现，不需要生成器做任何补偿）：
 
-1. **一句一个显示实例**：每段歌词到点创建，最后一批字退场完成后自己删除。
+1. **一句一个显示实例**：每段歌词到点创建，整句退场完成后自己删除。
    上一句与下一句互不影响，可以重叠；不需要 `/mpe autoclear`。
-2. **逐字出现**：字 `c` 在 `段start + 字start` 时刻开始出现，`字duration` 后开始退场，
-   退场动画长度取段的 `exit=`。
-3. **字的入场/退场**：入场动画时长 = `min(enter=, 该字duration)`；退场用 `out=` + `exit=`。
-4. **整句生命周期** = `delay + max(字start + 字duration) + exit`（tick）。
-5. **帧驱动渲染**：字边界的动画按渲染帧（~60FPS）插值，不会一格一格跳。
-6. **同一 tick 多字 / 多句同时显示**都支持，互不干扰。
-7. 段的 `start` 到点后，如果整句已经过期（例如 replay 跳进度），模组会跳过它，不会补播。
-8. 协议层新增了「逐字时间表」字段，**客户端与服务端都要装同一版本模组**。
-9. `/mpe text chain clear [id=...]`、`/mpe text chain status` 行为不变；
-   逐字实例被强制清理时立即消失（不会重播已经出现过的字）。
+2. **逐字累积出现**：字 `c` 在 `段start + 字start` 时刻开始出现，之后**一直保留**
+   （`charout=hold`，默认），整句在 `段start + max(字start + 字duration)` 时刻一起跑 `out=` 退场。
+   这就是「第 1 个字出现后不隐藏，继续显示第 2 个……累计成整句」的效果。
+3. **退场**：`charout=hold` 时整句统一退场（长度取 `exit=`）；`charout=self` 时每个字到
+   自己的 `start + duration` 单独退场。
+4. **入场**：每个字各自的入场动画，时长 = `min(enter=, 该字duration)`；`enter=0` 表示立刻全显。
+5. **整句生命周期** = `delay + max(字start + 字duration) + exit`（tick）。
+6. **帧驱动渲染**：字边界的动画按渲染帧（~60FPS）插值，不会一格一格跳。
+7. **同一 tick 多字 / 多句同时显示**都支持，互不干扰。
+8. 段的 `start` 到点后，如果整句已经过期（例如 replay 跳进度），模组会跳过它，不会补播。
+9. 协议层新增了「逐字时间表」与 `charout` 字段，**客户端与服务端都要装同一版本模组**。
+10. `/mpe text chain clear [id=...]`、`/mpe text chain status` 行为不变；
+    逐字实例被强制清理时立即消失（不会重播已经出现过的字）。
 
 模组实现位置（维护者参考）：
 
 | 文件 | 作用 |
 |---|---|
 | `model/CharTiming.java` | 单个字的时间表条目（`start`, `duration`） |
-| `model/TextDisplayParams.java` | 新增 `charTimings` 字段、`perChar()`、`charSpanTicks()` |
-| `command/MiauParticleEffectsCommand.java` | 解析 `chars=`、可见字符数校验、动画白名单校验 |
-| `protocol/PayloadCodecs.java` | `chars=` 的编解码 |
+| `model/TextDisplayParams.java` | 新增 `charTimings` / `charHold` 字段、`perChar()`、`charSpanTicks()` |
+| `command/MiauParticleEffectsCommand.java` | 解析 `chars=` / `charout=`、可见字符数校验、动画白名单校验 |
+| `protocol/PayloadCodecs.java` | `chars=` / `charout=` 的编解码 |
 | `client/raster/FontRasterizer.java` | 提供每个字的水平中心（字级缩放/旋转基准） |
 | `client/display/TextInstance.java` | 逐字时间轴渲染（`spawnPerChar`） |
+
+> **性能提示**：`hold`（累积）会让整句的字同时留在屏上，粒子数随句子长度增长。
+> 一句十几字通常没问题；如果歌词很长、又想要更清晰（`density=` 很小），
+> 可以适当放大 `density=`（粒子变少）或缩小 `scale=`。
 
 ---
 
@@ -311,18 +327,19 @@ enter=0 exit=3 fade=both in=scale:enlarge
   - `start = 123 − 1 = 122`
   - 4 个字 / 4 项时间表 ✔
 
-**③ 时间线（相对命令方块执行）**
+**③ 时间线（相对命令方块执行，默认 `charout=hold` 累积显示）**
 
 | tick | 事件 |
 |---|---|
 | 0 | 命令方块执行，客户端拿到整首歌的歌词时间轴 |
 | 99 | 第 1 句在 `(0,2,0)` 开始，字「今」出现 |
-| 102 / 105 / 107 | 「天」「␣」「真」依次出现 |
-| 110 | 「好」出现，并停留 12 tick |
-| 122 | 第 2 句开始，「我」出现（此时第 1 句的「好」还在显示 → 允许重叠） |
-| 132 | 第 1 句「好」开始退场，3 tick 内消失 |
-| 141 | 第 2 句「睡」开始退场 |
-| 144 | 第 2 句整句删除 |
+| 102 / 105 / 107 | 「天」「␣」「真」依次出现，**前面的字不消失**（累积成「今天 真」） |
+| 110 | 「好」出现，整句现在是「今天 真好」并一直保持 |
+| 122 | 第 1 句到达句末（99 + 23），整句开始退场（3 tick） |
+| 122 | 第 2 句开始，「我」出现（与第 1 句退场重叠 3 tick → 允许；真实场景换行即可） |
+| 125 / 128 / 131 | 「还」「没」「睡」依次累积，整句显示「我还没睡」 |
+| 151 | 第 2 句到达句末（122 + 29），整句退场 |
+| 154 | 第 2 句删除 |
 
 ---
 
@@ -364,6 +381,7 @@ for s in sentences:
 # ---------- ④ 拼命令 ----------
 command = "/mpe text chain ~~~ " + join(segments, "|")
           + " enter=0 exit=3 fade=both in=scale:enlarge"   # 全局默认选项
+          # 不要写 charout= → 默认 hold：字累积显示，整句一起退场
 writeIntoImpulseCommandBlock(command)
 
 # sanitize:
@@ -403,6 +421,7 @@ writeIntoImpulseCommandBlock(command)
 - [ ] `chars=` 项数 **= 句子可见字符数**（空格算 1，`§x`/`&x` 颜色码不算）
 - [ ] 每项的 `字start` = `word.start − 句首tick`，`字duration` = `word.duration`
 - [ ] 段 `duration` 写 `0`（或省略），让模组按时间表推导
+- [ ] 想要「累积成整句」的字幕效果就用默认 `charout=hold`（不写即可）
 - [ ] 句子文字里没有 `|` `;` `,`，空格已写成 `_`
 - [ ] 逐字模式没有用 `typewriter` / `wipe` / `spacing` / `scatter`
 - [ ] 命令是**脉冲型**命令方块，锚点写 `~~~`
@@ -423,6 +442,8 @@ writeIntoImpulseCommandBlock(command)
 | `duration=... 小于逐字时间表最后一字的结束时刻 ...` | 段里写了过小的 `duration` | 段 `duration` 写 `0` 或省略 |
 | `逐字模式（chars=）不支持 in=typewriter` | 用了冲突动画 | 换 `scale` / `fade` 等（第 8 节） |
 | `第 k 段的 duration 至少为 1 tick（逐字模式可用 chars= 让模组推导）` | 段写了 `0` 但没有 `chars=` | 补 `chars=`，或写 ≥1 的 duration |
+| `charout= 只对逐字模式（chars=）有意义` | 单句文字写了 `charout=` | 删掉，或改用 `chars=` 逐字模式 |
+| `charout= 取值应为 hold ... / self ...` | 值拼错 | 只写 `hold` 或 `self` |
 | `至少需要 1 段歌词` | 段数据为空 | 检查拼装时是否写了 `\|` 分隔 |
 
 ---
