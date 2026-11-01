@@ -130,12 +130,24 @@ public final class PayloadCodecs {
             double density = buf.readDouble();
             MoveSpec move = buf.readBoolean() ? MOVE.decode(buf) : null;
             String id = buf.readBoolean() ? buf.readUtf(128) : null;
+            boolean force = buf.readBoolean();
+            int charCount = buf.readVarInt();
+            if (charCount < 0 || charCount > TextDisplayParams.MAX_CHARS) {
+                charCount = 0;
+            }
+            List<org.miau.particleeffects.model.CharTiming> charTimings = new ArrayList<>(charCount);
+            for (int i = 0; i < charCount; i++) {
+                int charStart = buf.readVarInt();
+                int charDuration = buf.readVarInt();
+                charTimings.add(new org.miau.particleeffects.model.CharTiming(
+                        Math.max(0, charStart), Math.max(1, charDuration)));
+            }
             try {
                 return new TextDisplayParams(
                         text, new net.minecraft.world.phys.Vec3(p.x, p.y, p.z), scale, color,
                         colorMode, gradientColors,
                         orientation, duration, enter, exit, delay,
-                        curve, entry, exitSet, fade, spread, density, move, id, buf.readBoolean());
+                        curve, entry, exitSet, fade, spread, density, move, id, force, charTimings);
             } catch (RuntimeException e) {
                 return fallbackText(text, p);
             }
@@ -147,7 +159,7 @@ public final class PayloadCodecs {
                     ColorMode.SOLID, List.of(),
                     new Orientation(0f, 0f, 0f), 100, 0, 20, 0,
                     Easings.EASE_OUT, AnimationSet.EMPTY, AnimationSet.EMPTY,
-                    FadeOption.NONE, 3f, 0.1, null, null, false);
+                    FadeOption.NONE, 3f, 0.1, null, null, false, List.of());
         }
 
         @Override
@@ -183,6 +195,11 @@ public final class PayloadCodecs {
                 buf.writeUtf(value.id());
             }
             buf.writeBoolean(value.force());
+            buf.writeVarInt(value.charTimings().size());
+            for (org.miau.particleeffects.model.CharTiming timing : value.charTimings()) {
+                buf.writeVarInt(timing.startTick());
+                buf.writeVarInt(timing.durationTicks());
+            }
         }
     };
 

@@ -27,7 +27,11 @@ public record TextDisplayParams(
         double density,
         MoveSpec move,
         String id,
-        boolean force) {
+        boolean force,
+        List<CharTiming> charTimings) {
+
+    /** 逐字时间表条目上限（与文字长度上限一致）。 */
+    public static final int MAX_CHARS = 256;
 
     public TextDisplayParams {
         if (text == null || text.isBlank()) {
@@ -57,6 +61,12 @@ public record TextDisplayParams(
         if (gradientColors == null) {
             gradientColors = List.of();
         }
+        if (charTimings == null) {
+            charTimings = List.of();
+        }
+        if (charTimings.size() > MAX_CHARS) {
+            throw new IllegalArgumentException("逐字时间表最多 " + MAX_CHARS + " 项");
+        }
         if (scale <= 0 || scale > 64) {
             throw new IllegalArgumentException("缩放必须大于 0 且不超过 64");
         }
@@ -81,7 +91,7 @@ public record TextDisplayParams(
         return new TextDisplayParams(
                 text, pos, scale, colorArgb, colorMode, gradientColors, orientation,
                 durationTicks, enterTicks, exitTicks, delayTicks,
-                curve, entry, exit, fade, spread, density, move, newId, force);
+                curve, entry, exit, fade, spread, density, move, newId, force, charTimings);
     }
 
     public TextDisplayParams withDelay(int addedTicks) {
@@ -91,10 +101,39 @@ public record TextDisplayParams(
         return new TextDisplayParams(
                 text, pos, scale, colorArgb, colorMode, gradientColors, orientation,
                 durationTicks, enterTicks, exitTicks, delayTicks + addedTicks,
-                curve, entry, exit, fade, spread, density, move, id, force);
+                curve, entry, exit, fade, spread, density, move, id, force, charTimings);
     }
 
+    /** 是否逐字时间轴模式：每个字都有自己的开始时刻与显示时长。 */
+    public boolean perChar() {
+        return !charTimings.isEmpty();
+    }
+
+    /**
+     * 逐字时间轴的整体跨度（不含 {@code enter}/{@code exit} 动画）：
+     * 最后一字的 {@code start + duration}。
+     */
+    public int charSpanTicks() {
+        int span = 0;
+        for (CharTiming timing : charTimings) {
+            if (timing.endTick() > span) {
+                span = timing.endTick();
+            }
+        }
+        return span;
+    }
+
+    /**
+     * 整段占用的总时长（tick）。
+     *
+     * <p>逐字模式下 {@code durationTicks} 只是生成器算出的跨度，真实时长由时间表决定：
+     * 最后一字退场完成后整句才删除，因此不含段级 {@code enterTicks}
+     * （入场动画按字计算，时长已隐含在每字的 {@code start..start+duration} 里）。</p>
+     */
     public int totalTicks() {
+        if (perChar()) {
+            return delayTicks + charSpanTicks() + exitTicks;
+        }
         return delayTicks + enterTicks + durationTicks + exitTicks;
     }
 }

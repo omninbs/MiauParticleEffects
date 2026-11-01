@@ -175,6 +175,13 @@ public final class FontRasterizer {
 
         float halfW = textWidth / 2f;
         float halfH = textHeight / 2f;
+        // 每个字符的水平中心（方块坐标，相对整句中心）：逐字动画以字中心为缩放/旋转基准，
+        // 单字缩放或翻转时就不会绕整句中心甩出去。
+        float[] charCenterX = new float[charRanges.size()];
+        for (int ci = 0; ci < charRanges.size(); ci++) {
+            int[] range = charRanges.get(ci);
+            charCenterX[ci] = ((range[0] + range[1]) / 2f - halfW) * worldPerPx;
+        }
         List<ParticlePixel> pixels = new ArrayList<>();
 
         // 采样点取每个格子的中心，并把 PAD 偏移补偿掉，使文字几何中心正好落在 pos 上。
@@ -204,12 +211,12 @@ public final class FontRasterizer {
                 float localY = (halfH - (py + sampleOffset)) * worldPerPx;
                 pixels.add(new ParticlePixel(localX, localY, argb, charCursor));
                 if (maxPixels > 0 && pixels.size() >= maxPixels) {
-                    return new RasterResult(List.copyOf(pixels), quadSize, charRanges.size());
+                    return new RasterResult(List.copyOf(pixels), quadSize, charRanges.size(), charCenterX);
                 }
             }
         }
 
-        return new RasterResult(List.copyOf(pixels), quadSize, charRanges.size());
+        return new RasterResult(List.copyOf(pixels), quadSize, charRanges.size(), charCenterX);
     }
 
     private static List<Segment> parseSegments(String text, int baseColor) {
@@ -262,8 +269,16 @@ public final class FontRasterizer {
     public record ParticlePixel(float localX, float localY, int colorArgb, int charIndex) {
     }
 
-    public record RasterResult(List<ParticlePixel> pixels, float quadSize, int charCount) {
+    /**
+     * 栅格化结果。
+     *
+     * @param pixels      采样点
+     * @param quadSize    建议粒子尺寸
+     * @param charCount   字符数（逐字动画的字符下标上限）
+     * @param charCenterX 每个字符的水平中心（方块，相对整句中心），逐字动画的缩放/旋转基准
+     */
+    public record RasterResult(List<ParticlePixel> pixels, float quadSize, int charCount, float[] charCenterX) {
 
-        public static final RasterResult EMPTY = new RasterResult(List.of(), 0f, 0);
+        public static final RasterResult EMPTY = new RasterResult(List.of(), 0f, 0, new float[0]);
     }
 }

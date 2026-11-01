@@ -1,0 +1,1 @@
+{"schema_version":1,"task_id":"0ad7beff29cffb3b--pwsh-1","job_id":"pwsh-1","session_id":"","state":"failed","runtime_state":"exited","runtime_lease_until":"0001-01-01T00:00:00Z","version":5,"created_at":"2026-11-01T13:20:25.6719474+08:00","updated_at":"2026-11-01T13:20:44.4595872+08:00","error_code":"job_failed"}

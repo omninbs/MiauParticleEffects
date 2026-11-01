@@ -19,12 +19,15 @@ import net.minecraft.server.permissions.Permission;
 import net.minecraft.server.permissions.PermissionLevel;
 /*?}*/
 import org.joml.Vector3f;
+import org.miau.particleeffects.animation.AnimCategory;
 import org.miau.particleeffects.animation.AnimationSet;
+import org.miau.particleeffects.animation.AnimationToken;
 import org.miau.particleeffects.animation.Easing;
 import org.miau.particleeffects.animation.Easings;
 import org.miau.particleeffects.animation.FadeOption;
 import org.miau.particleeffects.config.ConfigManager;
 import org.miau.particleeffects.config.MiauParticleEffectsConfig;
+import org.miau.particleeffects.model.CharTiming;
 import org.miau.particleeffects.model.ClearScope;
 import org.miau.particleeffects.model.ColorCodec;
 import org.miau.particleeffects.model.ColorMode;
@@ -125,19 +128,29 @@ public final class MiauParticleEffectsCommand {
                 x,y,z      相对锚点的方块偏移（可为小数、负数），即文字中心位置
                 start      从命令方块执行那一刻算起的 tick（绝对时刻，不是间隔）
                 duration   显示时长（tick，20 tick = 1 秒），省略时用 duration= 选项（默认 100）
+                           写了 chars= 时可写 0 或省略，模组自动取「最后一字的结束时刻」
                 文字       支持 § 与 & 颜色码；空格写成 _；不能含 | ; ,
                 段内选项   与全局选项同名，覆盖全局值
+            逐字时间表（歌词按「一个字一个 tick」精确对拍）：
+              chars=<start>:<duration>,<start>:<duration>,...
+                每个字一项，顺序与文字一致；条目数必须等于可见字符数（含空格，不含 §x 颜色码）
+                start    该字开始出现的时刻，相对本段的 start（tick，>=0）
+                duration 该字从出现到开始退场的时长（tick，>=1）；多个字可以同时出现
+                字的入场/出场动画用段的 in= / out= / enter= / exit=
+                逐字模式支持的动画：scale zoom flip rotate slide drop bounce clarity + fade
+                （typewriter / wipe / spacing / scatter 与时间表语义冲突，会报错）
             全局选项（空格分隔，写在最后）：
               density= 像素密度(0.01~1)   scale= 字号(方块)   color= / gradient= 颜色
               in= 入场动画   out= 出场动画   fade=in|out|both   enter= / exit= 动画时长(tick)
               curve= 曲线   towards= 朝向   move= 位移   spread= 间距倍率
-              force= 强制显示   linger= 链结束后再保留的 tick（-1 常驻）   id= 链 ID
+              chars= 逐字时间表   force= 强制显示   linger= 链结束后再保留的 tick（-1 常驻）   id= 链 ID
             子命令：
               /mpe text chain clear [id=<ID>]   移除全部/指定歌词链
               /mpe text chain status           查看存活的歌词链
             示例：
               /mpe text chain ~~~ 0,1,0,0,60,§6第一句|0,2,0,70,60,§e第二句 in=typewriter fade=both
               /mpe text chain ~~~ 0,0,0,0,40,Hello_World;color=#FFD700 scale=1.5
+              /mpe text chain ~~~ 0,2,0,0,0,今天_真好;chars=0:4,4:4,8:4,12:4,16:20 enter=0 exit=4 in=scale:enlarge
             """;
 
     private static final String HELP_EFFECT = """
@@ -265,14 +278,14 @@ public final class MiauParticleEffectsCommand {
     /** 文字选项补全（含动画样式的常用写法）。 */
     private static final String[] TEXT_OPTION_KEYS = {
             "scale=", "color=", "gradient=", "towards=", "duration=", "enter=", "exit=", "delay=",
-            "curve=", "in=", "out=", "fade=", "spread=", "density=", "move=", "id=", "force="};
+            "curve=", "in=", "out=", "fade=", "spread=", "density=", "move=", "chars=", "id=", "force="};
 
     private static final String[] TEXT_OPTION_VALUES = {
             "in=typewriter", "in=wipe", "in=slide:up", "in=scale:enlarge", "in=zoom", "in=flip",
             "in=bounce", "in=drop", "in=rotate", "in=scatter", "in=spacing:converge", "in=clarity:clear",
             "out=typewriter", "out=wipe", "out=slide:down", "out=scale:shrink", "out=zoom", "out=flip",
             "out=bounce", "out=drop", "out=rotate", "out=scatter", "fade=both", "fade=in", "fade=out",
-            "curve=ease-out", "curve=ease-in-out", "curve=bounce"};
+            "chars=0:4,4:4,8:4,12:20", "curve=ease-out", "curve=ease-in-out", "curve=bounce"};
 
     private static final SuggestionProvider<CommandSourceStack> TEXT_OPTION_SUGGESTIONS = (ctx, builder) -> {
         String input = builder.getRemaining().toLowerCase(Locale.ROOT);
@@ -492,7 +505,8 @@ public final class MiauParticleEffectsCommand {
 
     private static TextDisplayParams parseText(String text, Vec3 pos, Options o) {
         o.checkKeys("scale", "color", "gradient", "force", "towards", "duration", "enter", "exit", "delay",
-                "curve", "in", "out", "fade", "spread", "move", "id", "density");
+                "curve", "in", "out", "fade", "spread", "move", "id", "density", "chars");
+        String decoded = decodeColorCodes(text);
         float scale = (float) o.optDouble("scale", ConfigManager.get().defaultScale, 0.05, 64);
         ColorSpec cs = resolveColorSpec(o);
         Orientation orientation = o.has("towards") ? parseTowards(o.optString("towards", "")) : Orientation.SOUTH;
@@ -509,11 +523,107 @@ public final class MiauParticleEffectsCommand {
         MoveSpec move = o.has("move") ? parseMove(o.optString("move", "")) : null;
         String id = o.optString("id", "");
         boolean force = o.optBool("force", false);
+        List<CharTiming> charTimings = parseCharTimings(o.optString("chars", ""), decoded);
+        if (!charTimings.isEmpty()) {
+            int span = 0;
+            for (CharTiming timing : charTimings) {
+                span = Math.max(span, timing.endTick());
+            }
+            // 逐字模式下 duration 只是「整句跨度」：省略（或写 0）时由时间表推导，
+            // 写了更小的值会截断最后几个字，所以直接报错而不是静默裁剪。
+            if (!o.has("duration") || duration == 0) {
+                duration = span;
+            } else if (duration < span) {
+                throw new IllegalArgumentException("duration=" + duration
+                        + " 小于逐字时间表最后一字的结束时刻 " + span + "，请写 duration=0 让模组推导");
+            }
+            requirePerCharAnims(entry, "in");
+            requirePerCharAnims(exitSet, "out");
+        } else if (duration < 1) {
+            throw new IllegalArgumentException("duration 至少为 1 tick（逐字模式请用 chars= 让模组推导）");
+        }
         return new TextDisplayParams(
-                decodeColorCodes(text), pos, scale, cs.color(), cs.mode(), cs.gradientColors(), orientation,
+                decoded, pos, scale, cs.color(), cs.mode(), cs.gradientColors(), orientation,
                 duration, enter, exit, delay, curve,
                 entry, exitSet, fade, spread, density, move,
-                id.isBlank() ? null : id, force);
+                id.isBlank() ? null : id, force, charTimings);
+    }
+
+    /** 逐字模式下没有意义的动画类别：显现时刻已由时间表决定，字间距/爆散按字算也不成立。 */
+    private static void requirePerCharAnims(AnimationSet set, String key) {
+        for (AnimationToken token : set.tokens()) {
+            AnimCategory category = token.category();
+            if (category == AnimCategory.TYPEWRITER || category == AnimCategory.WIPE
+                    || category == AnimCategory.SPACING || category == AnimCategory.SCATTER) {
+                throw new IllegalArgumentException("逐字模式（chars=）不支持 " + key + "=" + category
+                        + "：显现已由每个字的 start 决定，可用 scale/zoom/flip/rotate/slide/drop/bounce/clarity");
+            }
+        }
+    }
+
+    /**
+     * 解析逐字时间表 {@code <start>:<duration>,<start>:<duration>,...}。
+     *
+     * <p>条目数必须等于文字的**可见字符数**：颜色码 {@code §x} / {@code &x} 不算字符，
+     * 空格算字符（保留空格的时间槽，歌词才能严格按 tick 对齐）。</p>
+     */
+    private static List<CharTiming> parseCharTimings(String raw, String text) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        int charCount = countVisibleChars(text);
+        List<CharTiming> timings = new ArrayList<>();
+        String[] items = raw.split(",", -1);
+        for (int i = 0; i < items.length; i++) {
+            String item = items[i].trim();
+            if (item.isEmpty()) {
+                throw new IllegalArgumentException("chars= 第 " + (i + 1) + " 项为空");
+            }
+            int colon = item.indexOf(':');
+            if (colon < 0) {
+                throw new IllegalArgumentException("chars= 第 " + (i + 1) + " 项 '" + item
+                        + "' 格式错误，应为 start:duration");
+            }
+            int start = parseIntTicks(item.substring(0, colon).trim(),
+                    "chars= 第 " + (i + 1) + " 项 start", 0, 72000);
+            int charDuration = parseIntTicks(item.substring(colon + 1).trim(),
+                    "chars= 第 " + (i + 1) + " 项 duration", 1, 72000);
+            timings.add(new CharTiming(start, charDuration));
+        }
+        if (timings.size() != charCount) {
+            throw new IllegalArgumentException("chars= 有 " + timings.size()
+                    + " 项，但文字 '" + text + "' 有 " + charCount
+                    + " 个可见字符（空格算一个，§/& 颜色码不算）");
+        }
+        return List.copyOf(timings);
+    }
+
+    /** 可见字符数：跳过 {@code §x}/{@code &x} 颜色码，逐 code point 计数（与客户端栅格化一致）。 */
+    private static int countVisibleChars(String text) {
+        int count = 0;
+        for (int i = 0; i < text.length(); ) {
+            char c = text.charAt(i);
+            if ((c == '\u00a7' || c == '&') && i + 1 < text.length()) {
+                char code = Character.toLowerCase(text.charAt(i + 1));
+                boolean color = (code >= '0' && code <= '9') || (code >= 'a' && code <= 'f') || code == 'r';
+                if (color) {
+                    i += 2;
+                    continue;
+                }
+            }
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            count++;
+        }
+        return count;
+    }
+
+    private static int parseIntTicks(String raw, String name, int min, int max) {
+        int value = (int) parseDouble(raw, name);
+        if (value < min || value > max) {
+            throw new IllegalArgumentException(name + " 取值应在 " + min + " ~ " + max + "（收到 '" + raw + "'）");
+        }
+        return value;
     }
 
     /** 允许用 &amp; 代替 § 写颜色码（命令方块里输入更省事）。 */
@@ -614,21 +724,21 @@ public final class MiauParticleEffectsCommand {
             double oy = parseDouble(parts[1], "第 " + (index + 1) + " 段 y");
             double oz = parseDouble(parts[2], "第 " + (index + 1) + " 段 z");
             int start = (int) parseDouble(parts[3], "第 " + (index + 1) + " 段 start");
-            // 5 段写法可省略 duration，此时用全局 duration=（默认 100）。
-            int duration;
+            // 5 段写法可省略 duration 字段（回落到 duration= 选项或 chars= 时间表）。
+            int duration = 0;
+            boolean durationGiven = parts.length >= 6;
             String rest;
-            if (parts.length >= 6) {
+            if (durationGiven) {
                 duration = (int) parseDouble(parts[4], "第 " + (index + 1) + " 段 duration");
                 rest = parts[5];
             } else {
-                duration = global.optInt("duration", 100, 1, 72000);
                 rest = parts[4];
             }
             if (start < 0) {
                 throw new IllegalArgumentException("第 " + (index + 1) + " 段的 start 不能为负（单位 tick）");
             }
-            if (duration < 1) {
-                throw new IllegalArgumentException("第 " + (index + 1) + " 段的 duration 至少为 1 tick");
+            if (duration < 0) {
+                throw new IllegalArgumentException("第 " + (index + 1) + " 段的 duration 不能为负（单位 tick）");
             }
             String textPart = rest;
             Options segmentOptions = Options.EMPTY;
@@ -641,9 +751,18 @@ public final class MiauParticleEffectsCommand {
             if (text.isBlank()) {
                 throw new IllegalArgumentException("第 " + (index + 1) + " 段文字为空");
             }
-            Options merged = global.overlay(segmentOptions)
-                    .with("duration", Integer.toString(duration))
-                    .with("id", "");
+            Options merged = global.overlay(segmentOptions).with("id", "");
+            if (durationGiven) {
+                merged = merged.with("duration", Integer.toString(duration));
+            }
+            boolean perChar = merged.has("chars");
+            if (durationGiven && duration == 0 && !perChar) {
+                throw new IllegalArgumentException("第 " + (index + 1)
+                        + " 段的 duration 至少为 1 tick（逐字模式可用 chars= 让模组推导）");
+            }
+            if (!durationGiven && !merged.has("duration") && !perChar) {
+                merged = merged.with("duration", "100");
+            }
             if (merged.has("delay")) {
                 throw new IllegalArgumentException(
                         "第 " + (index + 1) + " 段不支持 delay=，请用段字段 start 控制显示时刻");
