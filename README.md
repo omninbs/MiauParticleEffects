@@ -9,8 +9,6 @@
 
 将音符盒与粒子特效绑定，实现视觉盛宴 + 红石音乐的双重体验。
 
-[English](README.md) · **简体中文**
-
 [![Java](https://img.shields.io/badge/Java-21%20%7C%2025-orange?style=flat-square)](#-运行需求)
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1%20~%2026.2-55B91E?style=flat-square)](#-运行需求)
 [![Fabric API](https://img.shields.io/badge/Fabric%20API-supported-dbd0b4?style=flat-square)](#-运行需求)
@@ -55,7 +53,7 @@
 
 | 项目 | 版本 |
 |---|---|
-| Minecraft | **1.21.1 / 1.21.4 / 1.21.8 / 1.21.11 / 26.2**（多版本，一套源码） |
+| Minecraft | **1.21.1 / 1.21.4 / 1.21.8 / 1.21.11 / 26.2** |
 | 装载器 | Fabric Loader **>= 0.16.0** |
 | API | Fabric API（对应 MC 版本最新版） |
 | Java | **21**（1.21.x）/ **25**（26.x） |
@@ -67,10 +65,12 @@
 
 ## 📦 安装方式
 
+~大家应该都会吧...对吧...~
+
 1. 为你的 Minecraft 版本安装 [Fabric Loader](https://fabricmc.net/use/)。
-2. 将 `MiauParticleEffects-<版本>.jar` 放入 `mods/` 文件夹。
+2. 将 `MiauParticleEffects.jar` 放入 `mods/` 文件夹。
 3. 安装对应版本的 [Fabric API](https://modrinth.com/mod/fabric-api)。
-4. 启动游戏，输入 `/mpe` 或 `/miauparticleeffects` 查看所有命令。
+4. 启动游戏，输入 `/mpe` 或 `/miauparticleeffects` 查看所有命令，大功告成！
 
 ---
 
@@ -101,7 +101,7 @@
 
 ### 🎵 音符盒弹力球（生成器联动）
 
-由**生成器**在每条链式结构起点放一个脉冲命令方块，启动时把整条时间轴一次性交给模组：
+由**[MiauRedstoneMusic生成器](https://github.com/omninbs/MiauRedstoneMusic)**在每条链式结构起点放一个脉冲命令方块，启动时把整条时间轴一次性交给模组：
 
 ```text
 /mpe noteblock chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8|12,0,0,16| curve=arc height=3 trail=24
@@ -115,6 +115,7 @@
 - 同一锚点重复执行 = 重置该链并从头重播。
 
 **音符盒触发特效**（可选）：开启后，每个音符盒被触发的瞬间，会在它所在位置播放一次指定特效。
+触发特效不会由生成器控制，而是用户手动自定义，默认是开启和使用wave特效。
 
 ```text
 /mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
@@ -193,7 +194,8 @@ MiauParticleEffects 就是现在的项目喵，它能绘画满天星空送给你
   </tr>
 </table>
 
-截图很难展现内容，而且还麻烦，猫猫喜欢偷懒喵！更多请看【红石音乐《失眠》| 纯原版】 https://www.bilibili.com/video/BV1y1n861ER4/?share_source=copy_web&vd_source=3e96416363504f8b52218590d3a13075
+截图很难展现内容，而且还麻烦，猫猫喜欢偷懒喵！更多请看
+【极致复刻《勾指起誓》- 洛天依】 https://www.bilibili.com/video/BV1Kh476cESs
 
 ---
 
@@ -201,7 +203,6 @@ MiauParticleEffects 就是现在的项目喵，它能绘画满天星空送给你
 
 - [中文使用教程](docs/USAGE_CN.md)
 - [English usage guide](docs/USAGE.md)
-- [English README](README.md)
 
 ---
 
