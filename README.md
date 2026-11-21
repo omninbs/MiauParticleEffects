@@ -1,18 +1,19 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/omninbs/MiauParticleEffects/main/docs/logo.png" alt="MiauParticleEffects" width="1280"/>
+<!-- LOGO Made By AI-->
+<img src="/docs/logo.jpg" alt="MiauParticleEffects" width="1280"/>
 
 # MiauParticleEffects
 
-**A little cat turns redstone music into a sky full of light.**
+**一只喵喵，把红石音乐泼洒成漫天流光。**
 
-Bind note blocks to particle effects for a visual feast alongside your redstone music.
+将音符盒与粒子特效绑定，实现视觉盛宴 + 红石音乐的双重体验。
 
-**English** · [简体中文](README_CN.md)
+[English](README.md) · **简体中文**
 
-[![Java](https://img.shields.io/badge/Java-21%20%7C%2025-orange?style=flat-square)](#-requirements)
-[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1%20~%2026.2-55B91E?style=flat-square)](#-requirements)
-[![Fabric API](https://img.shields.io/badge/Fabric%20API-supported-dbd0b4?style=flat-square)](#-requirements)
+[![Java](https://img.shields.io/badge/Java-21%20%7C%2025-orange?style=flat-square)](#-运行需求)
+[![Minecraft](https://img.shields.io/badge/Minecraft-1.21.1%20~%2026.2-55B91E?style=flat-square)](#-运行需求)
+[![Fabric API](https://img.shields.io/badge/Fabric%20API-supported-dbd0b4?style=flat-square)](#-运行需求)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/omninbs/MiauParticleEffects?style=flat-square&color=yellow)](https://github.com/omninbs/MiauParticleEffects/stargazers)
 [![Demo](https://img.shields.io/badge/Demo-Bilibili-ff69b4?style=flat-square)](https://www.bilibili.com/video/BV1y1n861ER4/)
@@ -21,186 +22,136 @@ Bind note blocks to particle effects for a visual feast alongside your redstone 
 
 ---
 
-## 📖 Table of Contents
+## 📖 目录
 
-- [✨ About](#-about)
-- [🚀 Requirements](#-requirements)
-- [📦 Installation](#-installation)
-- [🎆 Features](#-features)
-- [📖 Command Reference](#-command-reference)
-- [💡 Examples](#-examples)
-- [⚙️ Configuration](#-configuration)
-- [🖼️ Screenshots](#-screenshots)
-- [📚 Documentation](#-documentation)
-- [🔭 Roadmap](#-roadmap)
-- [🧩 Multi-Version Support](#-multi-version-support)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
+- [✨ 项目简介](#-项目简介)
+- [🚀 运行需求](#-运行需求)
+- [📦 安装方式](#-安装方式)
+- [🎆 功能特性](#-功能特性)
+- [📖 命令手册](#-命令手册)
+- [💡 使用示例](#-使用示例)
+- [⚙️ 配置文件](#️-配置文件)
+- [🖼️ 截图](#️-截图)
+- [📚 文档](#-文档)
+- [🤝 参与贡献](#-参与贡献)
+- [📄 许可证](#-许可证)
 
 ---
 
-## ✨ About
+## ✨ 项目简介
 
-**MiauParticleEffects** is a Minecraft Java (Fabric) mod built for **redstone music**. It binds note blocks to particle effects so every activated note becomes part of a synchronized visual performance:
+**MiauParticleEffects** 是一款面向**红石音乐**的 Minecraft Java（Fabric）模组。它让每一个被激活的**音符盒**都化作一缕流光：
 
-- 🧱 **Particle lyrics** — rasterize text into particle pixels with rich entrance/exit animations.
-- 💥 **Particle effects** — hollow cubes, tetrahedrons, cosmic explosions, and water ripples.
-- 🎵 **Note-block comet** — a bouncing, trailing comet that dances between activated note blocks.
-- 🌈 **Color modes** — solid colors, static gradients, flowing rainbow gradients, or cycling rainbow colors.
+- 🧱 **粒子歌词** —— 用**粒子当作像素**渲染文字，支持丰富的入场/出场动画。
+- 💥 **粒子特效** —— 空心正方体、立体三角、宇宙爆炸、水波。
+- 🎵 **音符盒弹力球** —— 一颗带拖尾的**弹力球彗星**，在音符间跳跃起舞。
+- 🌈 **四种颜色模式** —— 纯色、静态渐变、流动彩虹渐变、彩虹循环。
 
-Particle-written lyrics + a visualizer following your redstone melody → **music and light become one**.
+粒子写成的歌词 + 跟随红石旋律的视觉化 → 一块屏幕之上，**音乐与光芒合二为一**。
 
 ---
 
-## 🚀 Requirements
+## 🚀 运行需求
 
-| Item | Version |
+| 项目 | 版本 |
 |---|---|
-| Minecraft | **1.21.1 / 1.21.4 / 1.21.8 / 1.21.11 / 26.2** (multi-version, one codebase) |
-| Loader | Fabric Loader **>= 0.16.0** |
-| API | Fabric API (latest for the matching Minecraft version) |
-| Java | **21** (1.21.x) / **25** (26.x) |
+| Minecraft | **1.21.1 / 1.21.4 / 1.21.8 / 1.21.11 / 26.2**（多版本，一套源码） |
+| 装载器 | Fabric Loader **>= 0.16.0** |
+| API | Fabric API（对应 MC 版本最新版） |
+| Java | **21**（1.21.x）/ **25**（26.x） |
 
 > [!IMPORTANT]
-> Install the mod on **both client and server**. A dedicated server needs it to detect note blocks and broadcast display events.
+> **客户端与服务端均需安装**本模组。专用服务器需安装以检测音符盒并广播显示事件。
 
 ---
 
-## 📦 Installation
+## 📦 安装方式
 
-1. Install [Fabric Loader](https://fabricmc.net/use/) for your Minecraft version.
-2. Put `MiauParticleEffects-<version>.jar` into your `mods/` folder.
-3. Install the matching [Fabric API](https://modrinth.com/mod/fabric-api).
-4. Launch the game and run `/mpe` or `/miauparticleeffects`.
+1. 为你的 Minecraft 版本安装 [Fabric Loader](https://fabricmc.net/use/)。
+2. 将 `MiauParticleEffects-<版本>.jar` 放入 `mods/` 文件夹。
+3. 安装对应版本的 [Fabric API](https://modrinth.com/mod/fabric-api)。
+4. 启动游戏，输入 `/mpe` 或 `/miauparticleeffects` 查看所有命令。
 
 ---
 
-## 🎆 Features
+## 🎆 功能特性
 
-### 🟦 Particle Lyrics
-
-```text
-/mpe text "<lyrics>" <x> <y> <z> [options]
-```
-
-- Rasterizes every character into **particle pixels**.
-- Supports Minecraft `§` color codes.
-- Entrance/exit animations: `slide`, `scale`, `spacing`, `clarity`, plus `fade`.
-- Global `density` controls pixel spacing, quality, and particle cost.
-
-### 🔊 Particle Effects
+### 🟦 粒子歌词（文字显示）
 
 ```text
-/mpe effect <cube|tetra|explosion|wave> <x> <y> <z> [options]
+/mpe text "<歌词内容>" <x> <y> <z> [选项]
 ```
 
-| Type | Description |
+- 每个字符都会被栅格化为**粒子像素**（支持 `§` 颜色代码）。
+- 入场/出场动画：`slide` 滑入滑出、`scale` 缩放、`spacing` 聚散、`clarity` 清晰度，附加 `fade` 淡入淡出。
+- 全局 `density` 控制粒子间距（质量 ⇄ 粒子数量）。
+
+### 🔊 粒子特效
+
+```text
+/mpe effect <cube|tetra|explosion|wave> <x> <y> <z> [选项]
+```
+
+| 类型 | 说明 |
 |---|---|
-| `cube` | Hollow wireframe cube |
-| `tetra` | Hollow tetrahedron |
-| `explosion` | Cosmic particles radiating in every direction |
-| `wave` | Expanding water ripple with controllable speed |
+| `cube` | 空心正方体线框 |
+| `tetra` | 空心正四面体 |
+| `explosion` | 向四面迸发的宇宙爆炸 |
+| `wave` | 不断扩散的水波（速度可调） |
 
-### 🎵 Note-Block Comet
+### 🎵 音符盒弹力球（生成器联动）
 
-Your **generator** places one pulse command block at the start of each chain and hands the whole
-timeline to the mod in one shot:
+由**生成器**在每条链式结构起点放一个脉冲命令方块，启动时把整条时间轴一次性交给模组：
 
 ```text
 /mpe noteblock chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8|12,0,0,16| curve=arc height=3 trail=24
 ```
 
-- **Pure timeline drive** — the mod no longer listens for note-block sounds or traces redstone wiring; each chain's order and spacing come straight from the generator (`x,y,z,delay`, `delay` in game ticks), so it **lines up with the song on the very first playthrough**.
-- **One comet per chain** — every chain owns a single comet with a trailing tail, and it always lands on the top-center of a note block. Chains never interfere, so nothing bleeds or gets stuck.
-- **60 FPS trajectory** — the position is re-evaluated every rendered frame (about 60 FPS), so the curve stays continuous with no polygonal look; the trail is resampled by arc length for a smooth comet tail.
-- **Ball shape** — a bright core plus shell points on a sphere forms a glowing ball, with a tail that tapers from thick to thin — a comet, and a nod to *Rolling Sky*.
-- **Dynamic jump height** — `height` is only a **ceiling**: each hop picks an apex between `[H-2, H]` based on its horizontal distance and delay (`H ≤ 2` keeps it fixed at `H`).
-- Re-running on the same anchor resets that chain and replays it from the start.
+- **纯时间轴驱动** —— 模组不再检测音符盒发声、也不反推红石走线；每条链的顺序与间隔由生成器直接给出（`x,y,z,delay`，`delay` 单位为游戏 tick），**第一遍播放就与歌曲完全对齐**。
+- **一链一球** —— 一条链 = 一颗带彗尾的弹力球，落点固定为音符盒上表面中心，链与链之间互不干扰，不会串轨或卡死。
+- **60FPS 轨迹** —— 位置按渲染帧（约 60FPS）重新求值，曲线连续、没有多边形折线感；拖尾按弧长加密补点，形成平滑彗尾。
+- **球体外观** —— 亮核 + 球面外壳光点构成一颗发光小球，尾部由粗到细，像彗星也像《滚动的天空》里的球。
+- **动态跳跃高度** —— `height` 只是**上限**：球会按这一跳的水平距离与间隔在 `[H-2, H]` 之间自动取值（`H ≤ 2` 时固定为 `H`）。
+- 同一锚点重复执行 = 重置该链并从头重播。
 
-**Note-triggered effect** (optional): when enabled, every note block fires a chosen effect at its own position the moment it is triggered.
+**音符盒触发特效**（可选）：开启后，每个音符盒被触发的瞬间，会在它所在位置播放一次指定特效。
 
 ```text
 /mpe noteblock triggereffect effect wave ~ ~2 ~ duration=4 speed=8 enter=3 exit=0 size=2.8 color=#11FFFF
 /mpe noteblock triggereffect on
 ```
 
-The arguments follow `/mpe effect` exactly, where `~~~` means **the target note block itself** (`~ ~2 ~` = two blocks above the note block).
+参数语法与 `/mpe effect` 完全一致，其中 `~~~` 代表**目标音符盒方块本身**（`~ ~2 ~` = 音符盒正上方 2 格）。
 
-### 🎨 Color Modes
+### 🎨 一种命令，四种颜色
 
 ```text
-color=#FFD700                        # solid (alpha supported)
-gradient=#FF0000,#00FF00,#0000FF     # static gradient
-gradient=rainbow                     # flowing rainbow gradient
-color=rainbow                        # one color cycling through the rainbow
+color=#FFD700                        # 纯色（可带透明度）
+gradient=#FF0000,#00FF00,#0000FF     # 静态渐变色
+gradient=rainbow                     # 流动的彩虹渐变
+color=rainbow                        # 整体颜色随时间循环（彩虹色）
 ```
 
 ---
 
-## 📖 Command Reference
+## 📖 命令手册
 
-| Command | Description |
-|---|---|
-| `help [subcommand]` | Show general or subcommand-specific help |
-| `density <0.01~1>` | Set persistent pixel sampling density |
-| `text "<text>" <x> <y> <z> [options]` | Display text with particles |
-| `effect <type> <x> <y> <z> [options]` | Cast a particle effect |
-| `noteblock chain <anchor> <notes> [options]` | Send / replay one chain (generator-driven) |
-| `noteblock clear [id=<ID>]` | Remove all chains, or one chain by id |
-| `noteblock status` | List the chains currently alive |
-| `noteblock triggereffect on\|off\|effect <args>` | Note-triggered effect switch and parameters (reuses the `effect` syntax) |
-| `clear [all\|text\|effect\|id=<ID>]` | Clear displays |
-| `autoclear <on\|off>` | Let old text exit before new text starts |
+进入游戏输入/mpe help就可以啦~
+才不是我懒呢。
 
-Run a subcommand without its arguments, or query it directly:
+特效大部分都得配合我的 MiauRedstoneMusic生成器 才能很好发挥哦。
 
-```text
-/mpe text          /mpe help text
-/mpe effect        /mpe help effect
-/mpe noteblock     /mpe help noteblock
-```
-
-<details>
-<summary><b>⚙️ Common options (<code>text</code> / <code>effect</code>)</b></summary>
-
-```text
-scale=1.5 color=#FFD700 towards=45,0,0 duration=100 enter=10 exit=10
-delay=0 curve=ease-out in=slide:up,scale:enlarge out=clarity:blur fade=both
-move=0,2,0,20,linear id=my-lyric
-gradient=#FF0000,#00FF00 gradient=rainbow color=rainbow force=true
-```
-
-`force=true` bypasses normal particle distance culling. It is useful for distant displays, but can increase client rendering cost.
-
-</details>
-
-<details>
-<summary><b>🎵 Note-block options</b></summary>
-
-```text
-# Chain parameters (written into a command block by the generator)
-chain ~~~ 3,0,0,10|6,0,0,8|9,0,0,8     # note data x,y,z,delay|... ; delay in ticks
-trail=24       # trail length in particles (2~256)
-curve=arc      # vertical arc: arc | sine | line (no bounce)
-height=3       # maximum jump height (the apex varies dynamically within [H-2, H])
-color=rainbow  # solid #RRGGBB or rainbow; gradient=#RRGGBB,#RRGGBB also works
-linger=40      # ticks to linger after the last note (-1 = permanent)
-force=true     # bypass distance culling
-
-# Note-triggered effect
-triggereffect on / off
-triggereffect effect wave ~ ~2 ~ duration=4 speed=8 size=2.8 color=#11FFFF
-```
-
-</details>
+[MiauNoteBlock](https://github.com/omninbs/MiauNoteBlock) 负责NBS编曲，完成后导出歌曲数据。
+[MiauRedstoneMusic](https://github.com/omninbs/MiauRedstoneMusic) 负责生成结构，并且自动生成命令方块调用粒子特效，包括歌词！
+MiauParticleEffects 就是现在的项目喵，它能绘画满天星空送给你！
 
 ---
 
-## 💡 Examples
+## 💡 使用示例
 
 ```text
-/mpe text "§4Burn §6bright §btonight" 100 64 100 scale=1.2 color=#FFD700 in=slide:up,scale:enlarge fade=in
-/mpe text "Gradient lyrics" 100 64 100 gradient=#FF0000,#00FF00 move=0,2,0,40,linear
+/mpe text "§4哈§6吉§b咪" 100 64 100 scale=1.2 color=#FFD700 in=slide:up,scale:enlarge fade=in
+/mpe text "歌词" 100 64 100 gradient=#FF0000,#00FF00 move=0,2,0,40,linear
 /mpe effect cube 100 64 100 size=2 color=#00FFFF rotate=0,1,0,3
 /mpe effect explosion 100 64 100 size=6 gradient=#FF4500,#FFFFFF
 /mpe effect wave 100 64 100 size=5 speed=3 color=#00FF00
@@ -212,9 +163,9 @@ triggereffect effect wave ~ ~2 ~ duration=4 speed=8 size=2.8 color=#11FFFF
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ 配置文件
 
-The mod creates `config/miauparticleeffects.json` on first launch:
+首次启动会自动生成 `config/miauparticleeffects.json`：
 
 ```json
 {
@@ -224,88 +175,48 @@ The mod creates `config/miauparticleeffects.json` on first launch:
 }
 ```
 
-| Key | Description |
+| 键 | 说明 |
 |---|---|
-| `density` | Text sampling density (smaller = sharper, more particles) |
-| `autoclear` | Make new text wait for old text to exit |
-| `defaultScale` | Default glyph height in blocks |
+| `density` | 粒子采样间距（方块），越小越清晰、粒子越多 |
+| `autoclear` | 自动让旧文字先退场 |
+| `defaultScale` | 默认字形高度（方块） |
 
 ---
 
-## 🖼️ Screenshots
+## 🖼️ 截图
 
 <table>
   <tr>
-    <td><img src="docs/text1.png" alt="Particle text example"/></td>
-    <td><img src="docs/text2.png" alt="Particle text example"/></td>
-    <td><img src="docs/cube.png" alt="Hollow cube particle effect"/></td>
+    <td><img src="docs/text1.png" alt="文字"/></td>
+    <td><img src="docs/text2.png" alt="文字"/></td>
+    <td><img src="docs/cube.png" alt="正方体"/></td>
   </tr>
 </table>
 
-Screenshots can hardly do it justice — watch this:【红石音乐《失眠》| 纯原版】 https://www.bilibili.com/video/BV1y1n861ER4/?share_source=copy_web&vd_source=3e96416363504f8b52218590d3a13075.
+截图很难展现内容，而且还麻烦，猫猫喜欢偷懒喵！更多请看【红石音乐《失眠》| 纯原版】 https://www.bilibili.com/video/BV1y1n861ER4/?share_source=copy_web&vd_source=3e96416363504f8b52218590d3a13075
 
 ---
 
-## 📚 Documentation
+## 📚 文档
 
-- [English usage guide](docs/USAGE.md)
 - [中文使用教程](docs/USAGE_CN.md)
-- [中文 README](README_CN.md)
+- [English usage guide](docs/USAGE.md)
+- [English README](README.md)
 
 ---
 
-## 🔭 Roadmap
+## 🤝 参与贡献
 
-- [x] Particle text and animations
-- [x] Cube, tetrahedron, explosion, and wave effects
-- [x] Note-block comet binding (per-track)
-- [x] Static gradients and rainbow color modes
-- [ ] Integration with the [NoteBlockWeb editor](https://github.com/omninbs/NoteBlockWeb)
-- [ ] More languages and particle effects
-- [ ] Automatic redstone music detection and effect generation
-- [ ] More note-block visualizers such as beat bars and equalizers
+欢迎提 [Issue](../../issues) 或 [PR](../../pulls)，一起完善这个模组！
+
+请尽量附上：Minecraft / Fabric Loader / Fabric API 版本、使用的完整命令、相关日志或崩溃报告、显示问题的截图或短视频。
+
+**ps：大约 80% 的代码是 AI 写的喵，手搓这么大个项目会累死喵喵我的，所以选择了用 AI 喵！**
 
 ---
 
-## 🧩 Multi-Version Support
+## 📄 许可证
 
-This project uses [Stonecutter](https://stonecutter.kikugie.dev/) to build **one codebase for multiple Minecraft versions**, with `loom-back-compat` selecting the correct Loom variant (obfuscated vs unobfuscated) automatically. Sources are written against Mojang official mappings.
+基于 [Fabric](https://fabricmc.net/) 与 Fabric API 构建，灵感来源于红石音乐的魅力。
 
-Supported versions: `1.21.1`, `1.21.4`, `1.21.8`, `1.21.11`, `26.2`.
-
-```text
-# Build every version (outputs in versions/<version>/build/libs/)
-gradlew build
-
-# Build a single version (switch the active version, then build)
-gradlew "Set active project to 1.21.8"
-gradlew :1.21.8:build
-```
-
-- Per-version dependency coordinates live in `stonecutter.properties.toml`.
-- Version differences are handled with Stonecutter conditional comments (`/*? if ... */`) and replacements in `stonecutter.gradle.kts`.
-- Switch back to 26.2 before committing: `gradlew "Set active project to 26.2"`.
-
-> [!NOTE]
-> **Build prerequisites:** the Gradle daemon must run on **Java 25** (Loom 1.18 requires it). This is handled automatically by `gradle/gradle-daemon-jvm.properties` — Gradle will pick (or download via foojay) a Java 25 JVM for the daemon, regardless of your `JAVA_HOME`. The Java 21 toolchain for the 1.21.x targets is auto-provisioned as well.
-
----
-
-## 🤝 Contributing
-
-Issues, suggestions, and pull requests are welcome. Please include:
-
-- Minecraft, Fabric Loader, and Fabric API versions
-- The exact command used
-- A log or crash report when relevant
-- A short video or screenshot for rendering issues
-
-Most of the implementation was developed with AI assistance, followed by manual integration and build verification. Contributions and corrections are welcome.
-
----
-
-## 📄 License
-
-Licensed under the [Apache License 2.0](LICENSE).
-
-Built with [Fabric](https://fabricmc.net/) and the Fabric API. Inspired by the creativity of redstone music.
+许可证：[Apache License 2.0](LICENSE)。
